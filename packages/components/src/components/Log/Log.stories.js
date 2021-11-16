@@ -30,7 +30,13 @@ const performanceTest = Array.from(
 
 export default {
   component: Log,
-  decorators: [storyFn => <div style={{ width: '500px' }}>{storyFn()}</div>],
+  decorators: [
+    Story => (
+      <div style={{ width: '500px' }}>
+        <Story />
+      </div>
+    )
+  ],
   title: 'Components/Log'
 };
 
@@ -40,10 +46,18 @@ export const Loading = () => <Log loading />;
 
 export const Completed = () => (
   <Log
-    stepStatus={{ terminated: { reason: 'Completed' } }}
+    stepStatus={{ terminated: { reason: 'Completed', exitCode: 0 } }}
     fetchLogs={() => 'A log message'}
   />
 );
+
+export const CompletedNonZero = () => (
+  <Log
+    stepStatus={{ terminated: { reason: 'Completed', exitCode: 1 } }}
+    fetchLogs={() => 'A log message'}
+  />
+);
+CompletedNonZero.storyName = 'Completed: non-zero exit code';
 
 export const Failed = () => (
   <Log
@@ -54,21 +68,21 @@ export const Failed = () => (
 
 export const ANSICodes = () => (
   <Log
-    stepStatus={{ terminated: { reason: 'Completed' } }}
+    stepStatus={{ terminated: { reason: 'Completed', exitCode: 0 } }}
     fetchLogs={() => ansiLog}
   />
 );
 
 export const Windowed = () => (
   <Log
-    stepStatus={{ terminated: { reason: 'Completed' } }}
+    stepStatus={{ terminated: { reason: 'Completed', exitCode: 0 } }}
     fetchLogs={() => long}
   />
 );
 
 export const Performance = () => (
   <Log
-    stepStatus={{ terminated: { reason: 'Completed' } }}
+    stepStatus={{ terminated: { reason: 'Completed', exitCode: 0 } }}
     fetchLogs={() => performanceTest}
   />
 );
@@ -80,7 +94,7 @@ export const Toolbar = () => {
   return (
     <Log
       fetchLogs={() => 'A log message'}
-      stepStatus={{ terminated: { reason: 'Completed' } }}
+      stepStatus={{ terminated: { reason: 'Completed', exitCode: 0 } }}
       toolbar={<LogsToolbar name={name} url={url} />}
     />
   );

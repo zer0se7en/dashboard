@@ -51,23 +51,17 @@ source $(dirname $0)/../vendor/github.com/tektoncd/plumbing/scripts/presubmit-te
 function utility_install() {
   # Install envsubst
   apt-get install gettext-base
-  # Get yaml-to-json converter
-  echo "Getting yq"
-  wget https://github.com/mikefarah/yq/releases/download/v4.6.0/yq_linux_amd64 .
-
-  chmod +x yq_linux_amd64
-  mv yq_linux_amd64 /bin/yq
-  echo "yq being used from $(which yq), version is: $(yq --version)"
 }
+
 function get_node() {
   echo "Script is running as $(whoami) on $(hostname)"
   # It's Stretch and https://github.com/tektoncd/dashboard/blob/main/package.json
   # denotes the Node.js and npm versions
   apt-get update
   apt-get install -y curl
-  curl -O https://nodejs.org/dist/v14.15.0/node-v14.15.0-linux-x64.tar.xz
-  tar xf node-v14.15.0-linux-x64.tar.xz
-  export PATH=$PATH:$(pwd)/node-v14.15.0-linux-x64/bin
+  curl -O https://nodejs.org/dist/v14.18.1/node-v14.18.1-linux-x64.tar.xz
+  tar xf node-v14.18.1-linux-x64.tar.xz
+  export PATH=$PATH:$(pwd)/node-v14.18.1-linux-x64/bin
 }
 
 function node_npm_install() {

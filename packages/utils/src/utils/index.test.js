@@ -14,6 +14,7 @@ limitations under the License.
 import { labels } from '@tektoncd/dashboard-utils';
 
 import {
+  applyStepTemplate,
   formatLabels,
   generateId,
   getAddFilterHandler,
@@ -205,9 +206,8 @@ it('getFilters', () => {
 it('getAddFilterHandler', () => {
   const url = 'someURL';
   const history = { push: jest.fn() };
-  const location = { search: '?nonFilterQueryParam=someValue' };
-  const match = { url };
-  const handleAddFilter = getAddFilterHandler({ history, location, match });
+  const location = { pathname: url, search: '?nonFilterQueryParam=someValue' };
+  const handleAddFilter = getAddFilterHandler({ history, location });
   const labelFilters = ['foo1=bar1', 'foo2=bar2'];
   handleAddFilter(labelFilters);
   expect(history.push).toHaveBeenCalledWith(
@@ -222,12 +222,10 @@ describe('getDeleteFilterHandler', () => {
     const search = `?labelSelector=${encodeURIComponent('foo=bar')}`;
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search };
-    const match = { url };
+    const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
       history,
-      location,
-      match
+      location
     });
     handleDeleteFilter('foo=bar');
     expect(history.push).toHaveBeenCalledWith(url);
@@ -239,12 +237,10 @@ describe('getDeleteFilterHandler', () => {
     )}`;
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search };
-    const match = { url };
+    const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
       history,
-      location,
-      match
+      location
     });
     handleDeleteFilter('foo1=bar1');
     expect(history.push).toHaveBeenCalledWith(
@@ -299,6 +295,37 @@ describe('getResources', () => {
     });
     expect(inputResources).toEqual(fakeInputResources);
     expect(outputResources).toEqual(fakeOutputResources);
+  });
+});
+
+it('applyStepTemplate', () => {
+  const stepTemplate = {
+    args: ['some_args'],
+    command: ['sh'],
+    env: [
+      { name: 'env1', value: 'value1' },
+      { name: 'env2', value: 'value2' }
+    ],
+    image: 'alpine',
+    ports: [{ containerPort: 8888 }, { containerPort: 7777, name: 'my-port' }]
+  };
+
+  const step = {
+    args: ['step_args'],
+    env: [
+      { name: 'env1', value: 'step_value1' },
+      { name: 'env3', value: 'step_value3' }
+    ],
+    image: 'ubuntu',
+    ports: [{ containerPort: 7777, name: 'my-step-port' }]
+  };
+
+  expect(applyStepTemplate({ step, stepTemplate })).toEqual({
+    args: step.args,
+    command: stepTemplate.command,
+    env: [step.env[0], stepTemplate.env[1], step.env[1]],
+    image: step.image,
+    ports: [stepTemplate.ports[0], step.ports[0]]
   });
 });
 
@@ -375,6 +402,27 @@ describe('getStepDefinition', () => {
     const definition = getStepDefinition({ selectedStepId, task, taskRun });
     expect(definition).toBeNull();
   });
+
+  it('handles taskRun using tekton bundle', () => {
+    const selectedStepId = 'a-bundle-step';
+    const bundleStep = { name: selectedStepId };
+    const task = {};
+    const taskRun = {
+      spec: {
+        taskRef: {
+          bundle: 'index.docker.io/fake/dummybundle@0.1',
+          name: 'dummy-task'
+        }
+      },
+      status: {
+        taskSpec: {
+          steps: [bundleStep]
+        }
+      }
+    };
+    const definition = getStepDefinition({ selectedStepId, task, taskRun });
+    expect(definition).toEqual(bundleStep);
+  });
 });
 
 it('getStepStatus', () => {
@@ -430,12 +478,10 @@ describe('getStatusFilter', () => {
     )}`;
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search };
-    const match = { url };
+    const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
       history,
-      location,
-      match
+      location
     });
     handleDeleteFilter('foo1=bar1');
     expect(history.push).toHaveBeenCalledWith(
@@ -449,12 +495,10 @@ describe('getStatusFilterHandler', () => {
     const search = '?nonFilterQueryParam=someValue&status=cancelled';
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search };
-    const match = { url };
+    const location = { pathname: url, search };
     const setStatusFilter = getStatusFilterHandler({
       history,
-      location,
-      match
+      location
     });
     setStatusFilter('');
     expect(history.push).toHaveBeenCalledWith(
@@ -465,12 +509,13 @@ describe('getStatusFilterHandler', () => {
   it('should set a valid status filter in the URL', () => {
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search: '?nonFilterQueryParam=someValue' };
-    const match = { url };
+    const location = {
+      pathname: url,
+      search: '?nonFilterQueryParam=someValue'
+    };
     const setStatusFilter = getStatusFilterHandler({
       history,
-      location,
-      match
+      location
     });
     const statusFilter = 'cancelled';
     setStatusFilter(statusFilter);
@@ -482,12 +527,10 @@ describe('getStatusFilterHandler', () => {
   it('should update the status filter in the URL', () => {
     const url = 'someURL';
     const history = { push: jest.fn() };
-    const location = { search: '?status=cancelled' };
-    const match = { url };
+    const location = { pathname: url, search: '?status=cancelled' };
     const setStatusFilter = getStatusFilterHandler({
       history,
-      location,
-      match
+      location
     });
     const statusFilter = 'completed';
     setStatusFilter(statusFilter);
@@ -754,5 +797,56 @@ describe('getTaskRunsWithPlaceholders', () => {
     expect(finallyTaskRun.metadata.labels[labels.PIPELINE_TASK]).toEqual(
       finallyTaskName
     );
+  });
+
+  it('handles pipeline using tekton bundle', () => {
+    const finallyTaskName = 'bundleFinallyTaskName';
+    const pipelineTaskName = 'bundlePipelineTaskName';
+
+    const pipelineRun = {
+      spec: {
+        pipelineRef: {
+          bundle: 'index.docker.io/fake/dummybundle@0.1',
+          name: 'dummy-pipeline'
+        }
+      },
+      status: {
+        pipelineSpec: {
+          tasks: [
+            {
+              name: pipelineTaskName
+            }
+          ],
+          finally: [
+            {
+              name: finallyTaskName
+            }
+          ]
+        }
+      }
+    };
+    const taskRun = {
+      metadata: {
+        labels: {
+          [labels.PIPELINE_TASK]: pipelineTaskName
+        },
+        name: pipelineTaskName
+      }
+    };
+    const finallyTaskRun = {
+      metadata: {
+        labels: {
+          [labels.PIPELINE_TASK]: finallyTaskName
+        },
+        name: finallyTaskName
+      }
+    };
+    const taskRuns = [
+      finallyTaskRun,
+      { metadata: { labels: {}, name: 'junk' } },
+      taskRun
+    ];
+    const runs = getTaskRunsWithPlaceholders({ pipelineRun, taskRuns });
+    expect(runs).toEqual([taskRun, finallyTaskRun]);
   });
 });

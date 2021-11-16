@@ -32,7 +32,7 @@ describe('StepStatus', () => {
     expect(queryByText(new RegExp(container, 'i'))).toBeTruthy();
     expect(queryByText(new RegExp(imageID, 'i'))).toBeTruthy();
     expect(queryByText(new RegExp(name, 'i'))).toBeTruthy();
-    expect(queryByText(/terminated/i)).toBeTruthy();
+    expect(queryByText('fake_terminated')).toBeTruthy();
     expect(queryByText(new RegExp(terminated, 'i'))).toBeTruthy();
   });
 
@@ -48,7 +48,7 @@ describe('StepStatus', () => {
     expect(queryByText(new RegExp(container, 'i'))).toBeTruthy();
     expect(queryByText(new RegExp(imageID, 'i'))).toBeTruthy();
     expect(queryByText(new RegExp(name, 'i'))).toBeTruthy();
-    expect(queryByText(/terminated/i)).toBeFalsy();
+    expect(queryByText('terminated')).toBeFalsy();
     expect(queryByText(new RegExp(running, 'i'))).toBeTruthy();
     expect(queryByText(new RegExp(waiting, 'i'))).toBeTruthy();
   });

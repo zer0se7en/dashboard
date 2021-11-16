@@ -256,6 +256,8 @@ const TaskRunDetails = ({
         >
           <div className="tkn--step-status">
             <ViewYAML
+              dark
+              enableSyntaxHighlighting
               resource={
                 taskRun.status ||
                 intl.formatMessage({
@@ -263,7 +265,6 @@ const TaskRunDetails = ({
                   defaultMessage: 'Pending'
                 })
               }
-              dark
             />
           </div>
         </Tab>
@@ -290,20 +291,13 @@ const TaskRunDetails = ({
               ) : null}
               {podContent === 'resource' ? (
                 <ViewYAML
+                  dark
                   enableSyntaxHighlighting
                   resource={pod.resource}
-                  {...(hasEvents
-                    ? null
-                    : {
-                        title: intl.formatMessage({
-                          id: 'dashboard.pod.resource',
-                          defaultMessage: 'Resource'
-                        })
-                      })}
                 />
               ) : null}
               {hasEvents && podContent === 'events' ? (
-                <ViewYAML enableSyntaxHighlighting resource={pod.events} />
+                <ViewYAML dark enableSyntaxHighlighting resource={pod.events} />
               ) : null}
             </div>
           </Tab>

@@ -45,21 +45,92 @@ export function getErrorMessage(error) {
   );
 }
 
+function mergeContainerField({
+  definition,
+  field,
+  mergeKey,
+  step,
+  stepTemplate
+}) {
+  const items = stepTemplate[field];
+  if (!items) {
+    return;
+  }
+
+  const stepItems = step[field];
+  (stepItems || []).forEach(stepItem => {
+    const matchIndex = items.findIndex(
+      candidate => candidate[mergeKey] === stepItem[mergeKey]
+    );
+    if (matchIndex !== -1) {
+      items[matchIndex] = stepItem;
+    } else {
+      items.push(stepItem);
+    }
+  });
+
+  definition[field] = items; // eslint-disable-line no-param-reassign
+}
+
+export function applyStepTemplate({ step, stepTemplate }) {
+  if (!step || !stepTemplate) {
+    return step;
+  }
+
+  const definition = {
+    ...stepTemplate,
+    ...step
+  };
+
+  [
+    {
+      field: 'ports',
+      mergeKey: 'containerPort'
+    },
+    {
+      field: 'env',
+      mergeKey: 'name'
+    },
+    {
+      field: 'volumeMounts',
+      mergeKey: 'mountPath'
+    },
+    {
+      field: 'volumeDevices',
+      mergeKey: 'devicePath'
+    }
+  ].forEach(({ field, mergeKey }) =>
+    mergeContainerField({ definition, field, mergeKey, step, stepTemplate })
+  );
+
+  return definition;
+}
+
 export function getStepDefinition({ selectedStepId, task, taskRun }) {
   if (!selectedStepId) {
     return null;
   }
 
-  const stepDefinitions =
-    (taskRun.spec?.taskSpec ? taskRun.spec.taskSpec.steps : task.spec?.steps) ||
-    [];
+  const stepTemplate =
+    taskRun.status?.taskSpec?.stepTemplate ||
+    taskRun.spec?.taskSpec?.stepTemplate ||
+    task?.spec?.stepTemplate;
+
+  let stepDefinitions = [];
+  if (taskRun.status?.taskSpec?.steps) {
+    stepDefinitions = taskRun.status.taskSpec.steps;
+  } else if (taskRun.spec?.taskSpec?.steps) {
+    stepDefinitions = taskRun.spec.taskSpec.steps;
+  } else if (task?.spec?.steps) {
+    stepDefinitions = task.spec.steps;
+  }
 
   const definition = stepDefinitions?.find(
     step => step.name === selectedStepId
   );
 
   if (definition) {
-    return definition;
+    return applyStepTemplate({ step: definition, stepTemplate });
   }
 
   if (!taskRun.status) {
@@ -76,7 +147,7 @@ export function getStepDefinition({ selectedStepId, task, taskRun }) {
   const unnamedSteps = stepDefinitions.filter(({ name }) => !name);
 
   const index = statusSteps.findIndex(({ name }) => name === selectedStepId);
-  return unnamedSteps[index];
+  return applyStepTemplate({ step: unnamedSteps[index], stepTemplate });
 }
 
 export function getStepStatus({ selectedStepId, taskRun }) {
@@ -90,6 +161,7 @@ export function getStepStatusReason(step) {
 
   let status;
   let reason;
+  const exitCode = step?.terminated?.exitCode;
   if (step.terminated) {
     status = 'terminated';
     reason = step.terminated.reason;
@@ -98,7 +170,7 @@ export function getStepStatusReason(step) {
   } else if (step.waiting) {
     status = 'waiting';
   }
-  return { reason, status };
+  return { exitCode, reason, status };
 }
 
 export function isPending(reason, status) {
@@ -167,16 +239,16 @@ export function getFilters({ search }) {
   return filters;
 }
 
-export function getAddFilterHandler({ history, location, match }) {
+export function getAddFilterHandler({ history, location }) {
   return function handleAddFilter(labelFilters) {
     const queryParams = new URLSearchParams(location.search);
     queryParams.set('labelSelector', labelFilters);
-    const browserURL = match.url.concat(`?${queryParams.toString()}`);
+    const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
     history.push(browserURL);
   };
 }
 
-export function getDeleteFilterHandler({ history, location, match }) {
+export function getDeleteFilterHandler({ history, location }) {
   return function handleDeleteFilter(filter) {
     const queryParams = new URLSearchParams(location.search);
     const labelFilters = queryParams.getAll('labelSelector');
@@ -190,16 +262,18 @@ export function getDeleteFilterHandler({ history, location, match }) {
       queryParams.set('labelSelector', labelFiltersArray);
     }
     const queryString = queryParams.toString();
-    const browserURL = match.url.concat(queryString ? `?${queryString}` : '');
+    const browserURL = location.pathname.concat(
+      queryString ? `?${queryString}` : ''
+    );
     history.push(browserURL);
   };
 }
 
-export function getClearFiltersHandler({ history, location, match }) {
+export function getClearFiltersHandler({ history, location }) {
   return function handleClearFilters() {
     const queryParams = new URLSearchParams(location.search);
     queryParams.delete('labelSelector');
-    const browserURL = match.url.concat(`?${queryParams.toString()}`);
+    const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
     history.push(browserURL);
   };
 }
@@ -221,7 +295,7 @@ export function getStatusFilter({ search }) {
   return status;
 }
 
-export function getStatusFilterHandler({ history, location, match }) {
+export function getStatusFilterHandler({ history, location }) {
   return function setStatusFilter(statusFilter) {
     const queryParams = new URLSearchParams(location.search);
     if (!statusFilter) {
@@ -229,7 +303,7 @@ export function getStatusFilterHandler({ history, location, match }) {
     } else {
       queryParams.set('status', statusFilter);
     }
-    const browserURL = match.url.concat(`?${queryParams.toString()}`);
+    const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
     history.push(browserURL);
   };
 }
@@ -403,12 +477,25 @@ export function getTaskRunsWithPlaceholders({
   taskRuns,
   tasks
 }) {
-  const pipelineTasks = []
-    .concat(pipeline?.spec?.tasks)
-    .concat(pipelineRun?.spec?.pipelineSpec?.tasks)
-    .concat(pipeline?.spec?.finally)
-    .concat(pipelineRun?.spec?.pipelineSpec?.finally)
-    .filter(Boolean);
+  let pipelineTasks = [];
+
+  if (pipelineRun?.status?.pipelineSpec?.tasks) {
+    pipelineTasks = pipelineTasks.concat(pipelineRun.status.pipelineSpec.tasks);
+  } else {
+    pipelineTasks = pipelineTasks
+      .concat(pipeline?.spec?.tasks)
+      .concat(pipelineRun?.spec?.pipelineSpec?.tasks);
+  }
+  if (pipelineRun?.status?.pipelineSpec?.finally) {
+    pipelineTasks = pipelineTasks.concat(
+      pipelineRun.status.pipelineSpec.finally
+    );
+  } else {
+    pipelineTasks = pipelineTasks
+      .concat(pipeline?.spec?.finally)
+      .concat(pipelineRun?.spec?.pipelineSpec?.finally);
+  }
+  pipelineTasks = pipelineTasks.filter(Boolean);
 
   const taskRunsToDisplay = [];
   pipelineTasks.forEach(pipelineTask => {

@@ -24,14 +24,14 @@ it('StepDefinition renders the provided content', () => {
   const definition = {
     args: ['--someArg'],
     command: ['docker'],
-    name: 'test name'
+    name: 'test-name'
   };
   const { queryByText } = render(
     <StepDefinition definition={definition} taskRun={{}} />
   );
 
   expect(queryByText(/--someArg/)).toBeTruthy();
-  expect(queryByText(/test name/)).toBeTruthy();
-  expect(queryByText(/Input resources/)).toBeNull();
-  expect(queryByText(/Output resources/)).toBeNull();
+  expect(queryByText('test-name')).toBeTruthy();
+  expect(queryByText('Input resources')).toBeNull();
+  expect(queryByText('Output resources')).toBeNull();
 });

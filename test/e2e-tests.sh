@@ -107,7 +107,7 @@ test_dashboard() {
     echo "Creating resources using the dashboard proxy..."
     pipelineRunFiles=($(find ${tekton_repo_dir}/test/resources/envsubst -iname "pipelinerun*.yaml"))
     for file in ${pipelineRunFiles[@]};do
-      json_curl_envsubst_resource "${file}" "POST" "${TEKTON_PROXY_URL}/pipelineruns" || fail_test "Failed to create pipelinerun: ${file}"
+      curl_envsubst_resource "${file}" "POST" "${TEKTON_PROXY_URL}/pipelineruns" || fail_test "Failed to create pipelinerun: ${file}"
     done
   else
     fail_test "Unknown resources creation method: ${creationMethod}"
@@ -219,11 +219,11 @@ if [ -z "$SKIP_BUILD_TEST" ]; then
 fi
 
 if [ -z "$PIPELINES_VERSION" ]; then
-  export PIPELINES_VERSION=v0.27.3
+  export PIPELINES_VERSION=v0.29.0
 fi
 
 if [ -z "$TRIGGERS_VERSION" ]; then
-  export TRIGGERS_VERSION=v0.16.0
+  export TRIGGERS_VERSION=v0.17.0
 fi
 
 header "Installing Pipelines and Triggers"

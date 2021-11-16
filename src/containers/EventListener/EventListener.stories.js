@@ -122,12 +122,6 @@ const eventListener = {
     ]
   }
 };
-const match = {
-  params: {
-    namespace,
-    eventListenerName: name
-  }
-};
 const intl = createIntl({
   locale: 'en',
   defaultLocale: 'en'
@@ -144,20 +138,20 @@ const queryClient = new QueryClient({
   }
 });
 
-const props = {
-  location: {},
-  match,
-  intl
-};
+const props = { intl };
 
 export default {
+  args: {
+    path: '/namespaces/:namespace/eventlisteners/:eventListenerName',
+    route: `/namespaces/${namespace}/eventlisteners/${name}`
+  },
   component: EventListenerContainer,
   title: 'Containers/EventListenerContainer'
 };
 
 export const Base = () => <EventListenerContainer {...props} />;
 Base.decorators = [
-  storyFn => {
+  Story => {
     queryClient.setQueryData(
       ['EventListener', { name, namespace }],
       eventListener
@@ -165,7 +159,7 @@ Base.decorators = [
 
     return (
       <QueryClientProvider client={queryClient}>
-        {storyFn()}
+        <Story />
       </QueryClientProvider>
     );
   }
@@ -173,7 +167,7 @@ Base.decorators = [
 
 export const NoTriggers = () => <EventListenerContainer {...props} />;
 NoTriggers.decorators = [
-  storyFn => {
+  Story => {
     queryClient.setQueryData(['EventListener', { name, namespace }], {
       ...eventListener,
       spec: { ...eventListener.spec, triggers: [] }
@@ -181,7 +175,7 @@ NoTriggers.decorators = [
 
     return (
       <QueryClientProvider client={queryClient}>
-        {storyFn()}
+        <Story />
       </QueryClientProvider>
     );
   }
@@ -189,7 +183,7 @@ NoTriggers.decorators = [
 
 export const NoServiceAccount = () => <EventListenerContainer {...props} />;
 NoServiceAccount.decorators = [
-  storyFn => {
+  Story => {
     queryClient.setQueryData(['EventListener', { name, namespace }], {
       ...eventListener,
       spec: { ...eventListener.spec, serviceAccountName: undefined }
@@ -197,24 +191,16 @@ NoServiceAccount.decorators = [
 
     return (
       <QueryClientProvider client={queryClient}>
-        {storyFn()}
+        <Story />
       </QueryClientProvider>
     );
   }
 ];
 NoServiceAccount.storyName = 'No ServiceAccount';
 
-export const NoServiceType = () => (
-  <EventListenerContainer
-    {...props}
-    eventListener={{
-      ...eventListener,
-      spec: { ...eventListener.spec, serviceType: undefined }
-    }}
-  />
-);
+export const NoServiceType = () => <EventListenerContainer {...props} />;
 NoServiceType.decorators = [
-  storyFn => {
+  Story => {
     queryClient.setQueryData(['EventListener', { name, namespace }], {
       ...eventListener,
       spec: { ...eventListener.spec, serviceType: undefined }
@@ -222,7 +208,7 @@ NoServiceType.decorators = [
 
     return (
       <QueryClientProvider client={queryClient}>
-        {storyFn()}
+        <Story />
       </QueryClientProvider>
     );
   }

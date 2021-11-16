@@ -10,20 +10,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+/* istanbul ignore file */
 
 import React from 'react';
-import PropTypes from 'prop-types';
+import { useHistory, useLocation, useParams } from 'react-router-dom';
 import { injectIntl } from 'react-intl';
 import { ResourceDetails, Table } from '@tektoncd/dashboard-components';
 import { useTitleSync } from '@tektoncd/dashboard-utils';
 import { useClusterTriggerBinding } from '../../api';
 import { getViewChangeHandler } from '../../utils';
 
-export /* istanbul ignore next */ function ClusterTriggerBindingContainer(
-  props
-) {
-  const { intl, location, match } = props;
-  const { clusterTriggerBindingName } = match.params;
+export function ClusterTriggerBindingContainer({ intl }) {
+  const history = useHistory();
+  const location = useLocation();
+  const params = useParams();
+  const { clusterTriggerBindingName } = params;
 
   const queryParams = new URLSearchParams(location.search);
   const view = queryParams.get('view');
@@ -72,7 +73,7 @@ export /* istanbul ignore next */ function ClusterTriggerBindingContainer(
     <ResourceDetails
       error={error}
       loading={isFetching}
-      onViewChange={getViewChangeHandler(props)}
+      onViewChange={getViewChangeHandler({ history, location })}
       resource={clusterTriggerBinding}
       view={view}
     >
@@ -90,13 +91,5 @@ export /* istanbul ignore next */ function ClusterTriggerBindingContainer(
     </ResourceDetails>
   );
 }
-
-ClusterTriggerBindingContainer.propTypes = {
-  match: PropTypes.shape({
-    params: PropTypes.shape({
-      clusterTriggerBindingName: PropTypes.string.isRequired
-    }).isRequired
-  }).isRequired
-};
 
 export default injectIntl(ClusterTriggerBindingContainer);
