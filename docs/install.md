@@ -163,6 +163,55 @@ Notes:
 - The exact `Ingress` resource definition may vary a little depending on the ingress controller installed in the cluster. Some specific annotations may be required for the ingress controller to process the `Ingress` resource correctly
 - If you don't have access to a domain you can use the freely available [`nip.io`](https://nip.io/) service
 
+An example using the NGINX ingress controller to expose the Dashboard on a specific path instead of at the root of the domain:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tekton-dashboard
+  namespace: tekton-pipelines
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: domain.tld
+    http:
+      paths:
+      - path: /tekton(/|$)(.*)
+        backend:
+          service:
+            name: tekton-dashboard
+            port:
+              number: 9097
+```
+
+You can then access the Dashboard UI at `http(s)://domain.tld/tekton/`
+
+### Access control
+
+The Dashboard does not provide its own authentication or authorization, however it will pass on any authentication headers provided to it by a proxy deployed in front of the Dashboard. These are then handled by the Kubernetes API server allowing for full access control via [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/). In case of forbidden access the Dashboard will display corresponding error notifications.
+
+See the walk-throughs for an example of [enabling authentication using oauth2-proxy](./walkthrough/walkthrough-oauth2-proxy.md).
+
+By default the Dashboard accesses resources and performs actions in the cluster using the permissions granted to its own ServiceAccount (i.e. the `tekton-dashboard` ServiceAccount in the `tekton-pipelines` namespace). If you wish to have the Dashboard perform actions on behalf of the authenticated user or some other ServiceAccount this can be achieved via [user impersonation](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#user-impersonation). This is known to work with a number of popular solutions including oauth2-proxy, Keycloak, OpenUnison, Traefik, Istio's EnvoyFilter, and more.
+
+Typically when configuring impersonation you would have the proxy forward its ServiceAccount token in the `Authorization` header, and details of the user and groups in the `Impersonate-User` and `Impersonate-Group` headers respectively. See the docs of your chosen solution for details.
+
+When using a reverse proxy, with impersonation headers or the user's account, you should remove the Dashboard's privileges to better maintain a "least privileged" approach.  This will make it less likely that the Dashboard's `ServiceAccount` will be abused:
+
+
+```
+kubectl delete clusterrolebinding -l rbac.dashboard.tekton.dev/subject=tekton-dashboard
+kubectl delete rolebinding -l rbac.dashboard.tekton.dev/subject=tekton-dashboard -n tekton-pipelines
+```
+
+If you're using one of these proxies to provide authentication but still want to use the Dashboard's ServiceAccount to access the Kubernetes APIs you may need to modify the proxy config to prevent it from sending the `Authorization` header on upstream requests to the Dashboard. Some examples of relevant config:
+- oauth2-proxy: add the `--pass-authorization-header=false` command line argument or its equivalent to your config https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/overview#command-line-options
+- Istio EnvoyFilter: the external authentication service should return a custom header `x-envoy-auth-headers-to-remove: Authorization` https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/auth/v3/external_auth.proto
+- Traefik: `removeHeader: true` https://doc.traefik.io/traefik/v2.0/middlewares/basicauth/#removeheader
+
 ## Uninstalling the Dashboard on Kubernetes
 
 The Dashboard can be uninstalled by running the following command:

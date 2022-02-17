@@ -105,7 +105,11 @@ export function TaskRunContainer({ intl }) {
     resourceName: taskRunName
   });
 
-  const { data: taskRun, error, isLoading: isLoadingTaskRun } = useTaskRun({
+  const {
+    data: taskRun,
+    error,
+    isLoading: isLoadingTaskRun
+  } = useTaskRun({
     name: taskRunName,
     namespace
   });
@@ -120,10 +124,17 @@ export function TaskRunContainer({ intl }) {
   );
 
   const podName = taskRun?.status?.podName;
-  const { data: pod = {} } = usePod(
+  let { data: pod } = usePod(
     { name: podName, namespace },
     { enabled: !!podName && view === 'pod' }
   );
+
+  if (!pod) {
+    pod = intl.formatMessage({
+      id: 'dashboard.pod.resource.empty',
+      defaultMessage: 'Waiting for Pod resource'
+    });
+  }
 
   const { data: events = [] } = useEvents(
     { involvedObjectKind: 'Pod', involvedObjectName: podName, namespace },

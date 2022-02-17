@@ -12,7 +12,7 @@ limitations under the License.
 */
 const { merge } = require('webpack-merge');
 
-const common = require('./webpack.common.js');
+const common = require('./webpack.common');
 const { API_DOMAIN, PORT } = require('./config_frontend/config.json');
 
 const mode = 'development';
@@ -35,10 +35,15 @@ module.exports = merge(common({ mode }), {
   mode,
   devtool: 'eval-source-map',
   devServer: {
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false
+      }
+    },
     historyApiFallback: true,
     hot: true,
     liveReload: false,
-    overlay: true,
     port: process.env.PORT || PORT,
     proxy: {
       '/v1': {

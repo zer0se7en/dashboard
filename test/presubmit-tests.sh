@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2018-2021 The Tekton Authors
+# Copyright 2018-2022 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,9 +59,9 @@ function get_node() {
   # denotes the Node.js and npm versions
   apt-get update
   apt-get install -y curl
-  curl -O https://nodejs.org/dist/v14.18.1/node-v14.18.1-linux-x64.tar.xz
-  tar xf node-v14.18.1-linux-x64.tar.xz
-  export PATH=$PATH:$(pwd)/node-v14.18.1-linux-x64/bin
+  curl -O https://nodejs.org/dist/v16.13.2/node-v16.13.2-linux-x64.tar.xz
+  tar xf node-v16.13.2-linux-x64.tar.xz
+  export PATH=$PATH:$(pwd)/node-v16.13.2-linux-x64/bin
 }
 
 function node_npm_install() {
@@ -70,7 +70,6 @@ function node_npm_install() {
   npm config set prefix '~/.npm-global'
   export PATH=$PATH:$HOME/.npm-global/bin
   npm ci || failed=1 # similar to `npm install` but ensures all versions from lock file
-  npm run bootstrap:ci || failed=1
   return ${failed}
 }
 
@@ -97,7 +96,7 @@ function pre_unit_tests() {
 function pre_integration_tests() {
     local failed=0
     node_npm_install || failed=1
-    npm run build_ko || failed=1
+    npm run build || failed=1
     return ${failed}
 }
 

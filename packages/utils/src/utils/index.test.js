@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 The Tekton Authors
+Copyright 2019-2021 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -34,6 +34,7 @@ import {
   getTaskRunsWithPlaceholders,
   getTaskSpecFromTaskRef,
   isRunning,
+  taskRunHasWarning,
   updateUnexecutedSteps
 } from '.';
 
@@ -779,11 +780,8 @@ describe('getTaskRunsWithPlaceholders', () => {
         ]
       }
     };
-    const [
-      conditionTaskRun,
-      taskRun,
-      finallyTaskRun
-    ] = getTaskRunsWithPlaceholders({ pipeline, taskRuns: [] });
+    const [conditionTaskRun, taskRun, finallyTaskRun] =
+      getTaskRunsWithPlaceholders({ pipeline, taskRuns: [] });
     expect(conditionTaskRun.metadata.labels[labels.PIPELINE_TASK]).toEqual(
       pipelineTaskName
     );
@@ -848,5 +846,48 @@ describe('getTaskRunsWithPlaceholders', () => {
     ];
     const runs = getTaskRunsWithPlaceholders({ pipelineRun, taskRuns });
     expect(runs).toEqual([taskRun, finallyTaskRun]);
+  });
+});
+
+describe('taskRunHasWarning', () => {
+  it('should return false for a TaskRun that has not completed', () => {
+    expect(
+      taskRunHasWarning({
+        status: {
+          conditions: [
+            { type: 'Succeeded', reason: 'Running', status: 'Unknown' }
+          ]
+        }
+      })
+    ).toBe(false);
+  });
+
+  it('should return false for a TaskRun with steps that all completed with exit code 0', () => {
+    expect(
+      taskRunHasWarning({
+        status: {
+          conditions: [
+            { type: 'Succeeded', reason: 'Succeeded', status: 'True' }
+          ],
+          steps: [{ terminated: { exitCode: 0, reason: 'Completed' } }]
+        }
+      })
+    ).toBe(false);
+  });
+
+  it('should return true for a successful TaskRun with at least one step that completed with non-zero exit code', () => {
+    expect(
+      taskRunHasWarning({
+        status: {
+          conditions: [
+            { type: 'Succeeded', reason: 'Succeeded', status: 'True' }
+          ],
+          steps: [
+            { terminated: { exitCode: 1, reason: 'Completed' } },
+            { terminated: { exitCode: 0, reason: 'Completed' } }
+          ]
+        }
+      })
+    ).toBe(true);
   });
 });

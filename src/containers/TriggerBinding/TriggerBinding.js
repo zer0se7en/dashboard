@@ -37,7 +37,11 @@ export function TriggerBindingContainer({ intl }) {
     resourceName
   });
 
-  const { data: triggerBinding, error, isFetching } = useTriggerBinding({
+  const {
+    data: triggerBinding,
+    error,
+    isFetching
+  } = useTriggerBinding({
     name: resourceName,
     namespace
   });
@@ -60,7 +64,7 @@ export function TriggerBindingContainer({ intl }) {
   ];
 
   const rowsForParameters =
-    triggerBinding?.spec.params.map(({ name, value }) => ({
+    triggerBinding?.spec?.params?.map(({ name, value }) => ({
       id: name,
       name,
       value

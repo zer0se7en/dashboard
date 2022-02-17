@@ -12,7 +12,9 @@ limitations under the License.
 */
 /* istanbul ignore file */
 import React from 'react';
-import { Redirect, Route } from 'react-router-dom';
+import { Route } from 'react-router-dom';
+
+import { NotFound } from '..';
 
 const ReadWriteRoute = ({
   component: Component,
@@ -22,7 +24,7 @@ const ReadWriteRoute = ({
   ...rest
 }) => (
   <Route {...rest} exact={exact} path={path}>
-    {isReadOnly ? <Redirect to="/" /> : <Component />}
+    {isReadOnly ? <NotFound /> : <Component />}
   </Route>
 );
 

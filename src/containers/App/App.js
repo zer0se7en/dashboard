@@ -11,10 +11,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from 'react-query';
 import { hot } from 'react-hot-loader/root';
 import {
+  Link,
   Redirect,
   Route,
   HashRouter as Router,
@@ -55,6 +56,7 @@ import {
   Extension,
   Extensions,
   ImportResources,
+  NotFound,
   PipelineResource,
   PipelineResources,
   PipelineRun,
@@ -141,6 +143,10 @@ async function loadMessages(lang) {
   return loadedMessages;
 }
 
+function HeaderNameLink(props) {
+  return <Link {...props} to={urls.about()} />;
+}
+
 /* istanbul ignore next */
 export function App({ lang }) {
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
@@ -192,10 +198,13 @@ export function App({ lang }) {
 
   const logoutButton = <LogoutButton getLogoutURL={() => logoutURL} />;
 
+  const namespaceContext = useMemo(
+    () => ({ selectedNamespace, selectNamespace: setSelectedNamespace }),
+    [selectedNamespace]
+  );
+
   return (
-    <NamespaceContext.Provider
-      value={{ selectedNamespace, selectNamespace: setSelectedNamespace }}
-    >
+    <NamespaceContext.Provider value={namespaceContext}>
       <IntlProvider
         defaultLocale={defaultLocale}
         locale={messages[lang] ? lang : defaultLocale}
@@ -208,6 +217,9 @@ export function App({ lang }) {
           <Router>
             <>
               <Header
+                headerNameProps={{
+                  element: HeaderNameLink
+                }}
                 isSideNavExpanded={isSideNavExpanded}
                 logoutButton={logoutButton}
                 onHeaderMenuButtonClick={() => {
@@ -228,6 +240,7 @@ export function App({ lang }) {
               >
                 <PageErrorBoundary>
                   <Switch>
+                    <Redirect exact from="/" to={urls.about()} />
                     <Route path={paths.pipelines.all()} exact>
                       <Pipelines />
                     </Route>
@@ -399,7 +412,7 @@ export function App({ lang }) {
                       <CustomResourceDefinition />
                     </Route>
 
-                    <Redirect to={urls.pipelineRuns.all()} />
+                    <NotFound />
                   </Switch>
                 </PageErrorBoundary>
               </Content>

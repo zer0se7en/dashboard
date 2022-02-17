@@ -16,6 +16,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   TrashCan16 as DeleteIcon,
+  PlayOutline16 as RunIcon,
   Playlist16 as RunsIcon
 } from '@carbon/icons-react';
 import { injectIntl } from 'react-intl';
@@ -58,7 +59,11 @@ export function Pipelines({ intl }) {
 
   useTitleSync({ page: 'Pipelines' });
 
-  const { data: pipelines = [], error, isLoading } = usePipelines({
+  const {
+    data: pipelines = [],
+    error,
+    isLoading
+  } = usePipelines({
     filters,
     namespace
   });
@@ -195,6 +200,28 @@ export function Pipelines({ intl }) {
             }
             renderIcon={DeleteIcon}
             size="sm"
+            tooltipAlignment="center"
+            tooltipPosition="left"
+          />
+        ) : null}
+        {!isReadOnly ? (
+          <Button
+            as={Link}
+            hasIconOnly
+            iconDescription={intl.formatMessage(
+              {
+                id: 'dashboard.actions.createRunButton',
+                defaultMessage: 'Create {kind}'
+              },
+              { kind: 'PipelineRun' }
+            )}
+            kind="ghost"
+            renderIcon={RunIcon}
+            size="sm"
+            to={`${urls.pipelineRuns.create()}?${new URLSearchParams({
+              namespace: pipeline.metadata.namespace,
+              pipelineName: pipeline.metadata.name
+            }).toString()}`}
             tooltipAlignment="center"
             tooltipPosition="left"
           />

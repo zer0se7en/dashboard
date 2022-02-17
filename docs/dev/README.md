@@ -28,11 +28,12 @@ In order to run the Tekton Dashboard, please make sure the requirements in [the 
 You will also need the following tools in order to build the Dashboard locally and deploy it:
 1. [`go`](https://golang.org/doc/install): The language the Tekton Dashboard backend is built in
 1. [`git`](https://help.github.com/articles/set-up-git/): For source control
-1. [Node.js & npm](https://nodejs.org/): For building and running the frontend locally. See `engines` in [package.json](../../package.json) for versions used. _Node.js 14.x is recommended_
+1. [Node.js & npm](https://nodejs.org/): For building and running the frontend locally. See `engines` in [package.json](../../package.json) for versions used. _Node.js 16.x is recommended_
 1. [`ko`](https://github.com/google/ko): For development. `ko` version v0.7.2 or higher is required for `dashboard` to work correctly
 1. [`kubectl`](https://kubernetes.io/docs/tasks/tools/install-kubectl/): For interacting with your kube cluster
-1. [`kustomize`](https://kubernetes-sigs.github.io/kustomize/installation/): For building the Dashboard manifests. You need a recent version - v3.5.4 is recommended
-See [here](https://github.com/kubernetes-sigs/kustomize/blob/master/docs/INSTALL.md#try-go) - `GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v3` works correctly
+1. [`kustomize`](https://kubernetes-sigs.github.io/kustomize/installation/): For building the Dashboard manifests. v3.5.4 is recommended, the installer script is not currently compatible with v4
+
+   See [here](https://kubectl.docs.kubernetes.io/installation/kustomize/source/) - `GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v3` works correctly
 
 ## Checkout your fork
 
@@ -51,31 +52,23 @@ git remote set-url --push upstream no_push
 _Adding the `upstream` remote sets you up nicely for regularly
 [syncing your fork](https://help.github.com/articles/syncing-a-fork/)._
 
-**Note:** If using Windows and you initially cloned your repo before this PR was merged: https://github.com/tektoncd/dashboard/pull/1707, you may need to clear your git cache to avoid line-ending problems when building the frontend.
-
-```
-git rm --cached -r .
-git reset --hard
-```
-
 ## Build the frontend
 
-First install and build the npm project.
-Install with a clean slate of dependencies, if a node_modules folder is already present in the project root it will be automatically removed before install.
+First install the required dependencies:
 
 ```bash
-npm ci 
+npm install
 ```
 
-There is a dedicated npm job for ko builds:
+Run the webpack build:
 
 ```bash
-npm run build_ko
+npm run build
 ```
 
 This will build the static resources and add them to the `kodata` directory.
 
-## Build the backend
+## Build the backend (optional: for local debugging)
 
 The backend uses `go modules` to manage its dependencies. To build the go backend, run:
 
@@ -129,8 +122,6 @@ Make sure that the backend service running in the cluster is proxied using `kube
 
 e.g. to connect your local dev frontend to the Dashboard deployed on the robocat cluster:
 `API_DOMAIN=https://dashboard.robocat.tekton.dev/ npm start`
-
-**Note:** If modifying any of the sub-packages (e.g. components or utils in https://github.com/tektoncd/dashboard/tree/main/packages), you'll need to run `npm run bootstrap` to ensure those packages are correctly built and linked before starting the dev server or running a build. This is done automatically by `npm ci` or `npm install` so you may not have to run it directly depending on your workflow.
 
 ## Quick setup for local cluster
 
@@ -238,7 +229,7 @@ Keep in mind that When running your Tekton Pipelines, if you see a `fatal: could
 
 You can read the dashboard backend [API docs](./api.md).
 
-Go though our [walk-throughs](../walkthrough/README.md) or learn about [extensions](../extensions.md).
+Try our [walk-throughs](../walkthrough/README.md) or learn about [extensions](../extensions.md).
 
 ---
 

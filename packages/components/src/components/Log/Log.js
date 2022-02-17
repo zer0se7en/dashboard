@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -24,11 +24,11 @@ import {
   isElementStartAboveViewTop
 } from './domUtils';
 
-import Ansi from '../LogFormat';
+import { DotSpinner, LogFormat } from '..';
 
 const LogLine = ({ data, index, style }) => (
   <div style={style}>
-    <Ansi>{`${data[index]}\n`}</Ansi>
+    <LogFormat>{`${data[index]}\n`}</LogFormat>
   </div>
 );
 
@@ -68,7 +68,7 @@ export class LogContainer extends Component {
 
   componentWillUnmount() {
     window.removeEventListener('scroll', this.handleLogScroll, true);
-    clearInterval(this.timer);
+    clearTimeout(this.timer);
     this.cancelled = true;
   }
 
@@ -154,13 +154,13 @@ export class LogContainer extends Component {
     if (this.props.enableLogScrollButtons) {
       const logRectangle = this.logRef.current?.getBoundingClientRect();
       const logElementRight =
-        document.documentElement?.clientWidth - logRectangle.right;
+        document.documentElement.clientWidth - logRectangle.right;
 
       const scrollButtonTop = Math.max(0, logRectangle.top);
 
       const scrollButtonBottom = Math.max(
         0,
-        document.documentElement?.clientHeight - logRectangle.bottom
+        document.documentElement.clientHeight - logRectangle.bottom
       );
 
       this.updateCssStyleProperty(logElementRight, '--tkn-log-element-right');
@@ -180,7 +180,7 @@ export class LogContainer extends Component {
       this[variableName] !== computedVariable
     ) {
       this[variableName] = computedVariable;
-      document.documentElement?.style.setProperty(
+      document.documentElement.style.setProperty(
         variableName,
         `${computedVariable.toString()}px`
       );
@@ -254,7 +254,7 @@ export class LogContainer extends Component {
     } = this.state;
 
     if (logs.length < 20000) {
-      return <Ansi>{logs.join('\n')}</Ansi>;
+      return <LogFormat>{logs.join('\n')}</LogFormat>;
     }
 
     const height = reason
@@ -278,10 +278,15 @@ export class LogContainer extends Component {
     const { forcePolling, intl } = this.props;
 
     if (reason && forcePolling) {
-      return intl.formatMessage({
-        id: 'dashboard.logs.pending',
-        defaultMessage: 'Final logs pending'
-      });
+      return (
+        <>
+          {intl.formatMessage({
+            id: 'dashboard.logs.pending',
+            defaultMessage: 'Final logs pending'
+          })}
+          <DotSpinner />
+        </>
+      );
     }
 
     switch (reason) {
@@ -289,7 +294,7 @@ export class LogContainer extends Component {
         if (exitCode !== 0) {
           return intl.formatMessage(
             {
-              id: 'dashboard.pipelineRun.stepCompleted.withError',
+              id: 'dashboard.pipelineRun.stepCompleted.exitCode',
               defaultMessage: 'Step completed with exit code {exitCode}'
             },
             { exitCode }
@@ -339,13 +344,8 @@ export class LogContainer extends Component {
   };
 
   loadLog = async () => {
-    const {
-      fetchLogs,
-      forcePolling,
-      intl,
-      stepStatus,
-      pollingInterval
-    } = this.props;
+    const { fetchLogs, forcePolling, intl, stepStatus, pollingInterval } =
+      this.props;
     if (!fetchLogs) {
       return;
     }
@@ -370,6 +370,7 @@ export class LogContainer extends Component {
           logs: logs ? logs.split('\n') : undefined
         });
         if (continuePolling) {
+          clearTimeout(this.timer);
           this.timer = setTimeout(this.loadLog, pollingInterval);
         }
       }
@@ -385,6 +386,7 @@ export class LogContainer extends Component {
         ]
       });
       if (continuePolling) {
+        clearTimeout(this.timer);
         this.timer = setTimeout(this.loadLog, pollingInterval);
       }
     }
@@ -412,7 +414,7 @@ export class LogContainer extends Component {
     const { toolbar } = this.props;
     const { loading } = this.state;
     return (
-      <pre className="tkn--log" ref={this.logRef}>
+      <pre className="tkn--log tkn--theme-dark" ref={this.logRef}>
         {loading ? (
           <SkeletonText paragraph width="60%" />
         ) : (

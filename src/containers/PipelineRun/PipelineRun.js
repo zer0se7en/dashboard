@@ -62,9 +62,8 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   const view = queryParams.get(VIEW);
 
   const maximizedLogsContainer = useRef();
-  const [showRunActionNotification, setShowRunActionNotification] = useState(
-    null
-  );
+  const [showRunActionNotification, setShowRunActionNotification] =
+    useState(null);
 
   const externalLogsURL = useExternalLogsURL();
   const isLogStreamingEnabled = useIsLogStreamingEnabled();
@@ -97,10 +96,8 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
     error: tasksError,
     isLoading: isLoadingTasks
   } = useTasks({ namespace });
-  const {
-    data: clusterTasks = [],
-    isLoading: isLoadingClusterTasks
-  } = useClusterTasks({});
+  const { data: clusterTasks = [], isLoading: isLoadingClusterTasks } =
+    useClusterTasks({});
 
   const pipelineName = pipelineRun?.spec.pipelineRef?.name;
   const { data: pipeline, isLoading: isLoadingPipeline } = usePipeline(
@@ -142,7 +139,7 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
       return retryStatus && taskRun.metadata.uid + retryStatus.podName;
     }
 
-    return taskRun.metadata.uid + taskRun.status?.podName;
+    return taskRun.metadata.uid + taskRun.status?.podName; // eslint-disable-line no-unsafe-optional-chaining
   }
 
   function getSelectedTaskRun(selectedTaskId) {
@@ -210,10 +207,17 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   );
 
   const { podName } = getSelectedTaskRun(selectedTaskId) || {};
-  const { data: pod = {} } = usePod(
+  let { data: pod } = usePod(
     { name: podName, namespace },
     { enabled: !!podName && view === 'pod' }
   );
+
+  if (!pod) {
+    pod = intl.formatMessage({
+      id: 'dashboard.pod.resource.empty',
+      defaultMessage: 'Waiting for Pod resource'
+    });
+  }
 
   const { data: events = [] } = useEvents(
     { involvedObjectKind: 'Pod', involvedObjectName: podName, namespace },
