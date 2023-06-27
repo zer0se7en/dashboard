@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,8 +13,6 @@ limitations under the License.
 
 export const labels = {
   CLUSTER_TASK: 'tekton.dev/clusterTask',
-  CONDITION_CHECK: 'tekton.dev/conditionCheck',
-  CONDITION_NAME: 'tekton.dev/conditionName',
   DASHBOARD_IMPORT: 'dashboard.tekton.dev/import',
   DASHBOARD_RETRY_NAME: 'dashboard.tekton.dev/retryName',
   PIPELINE: 'tekton.dev/pipeline',
@@ -27,6 +25,10 @@ export const pipelineRunStatuses = {
   PENDING: 'PipelineRunPending'
 };
 
+export const preferences = {
+  CANCEL_STATUS_KEY: 'tkn-pipelinerun-cancel-status'
+};
+
 export const queryParams = {
   PIPELINE_TASK: 'pipelineTask',
   RETRY: 'retry',
@@ -34,3 +36,6 @@ export const queryParams = {
   TASK_RUN_DETAILS: 'taskRunDetails',
   VIEW: 'view'
 };
+
+export const resourceNameRegex =
+  /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;

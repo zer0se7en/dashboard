@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2022 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -15,13 +15,6 @@ const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const ESLintPlugin = require('eslint-webpack-plugin');
 
-const contentSecurityPolicy = {
-  development:
-    "default-src 'none'; img-src 'self'; script-src 'self' 'unsafe-eval'; style-src blob: 'nonce-tkn-dev'; connect-src 'self' wss: ws:; font-src 'self' https://fonts.gstatic.com;",
-  production:
-    "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' wss: ws:; font-src 'self' https://fonts.gstatic.com;"
-};
-
 module.exports = ({ mode }) => ({
   output: {
     publicPath: '/'
@@ -34,6 +27,7 @@ module.exports = ({ mode }) => ({
       },
       {
         test: /\.js$/,
+        exclude: [path.resolve(__dirname, 'packages', 'e2e')],
         include: [
           path.resolve(__dirname, 'src'),
           path.resolve(__dirname, 'packages')
@@ -51,6 +45,11 @@ module.exports = ({ mode }) => ({
       {
         test: /\.(woff|woff2)$/,
         loader: 'file-loader'
+      },
+      {
+        test: /\.yaml$/,
+        type: 'json',
+        use: [{ loader: 'yaml-loader', options: { asJSON: true } }]
       }
     ]
   },
@@ -65,13 +64,7 @@ module.exports = ({ mode }) => ({
     new HtmlWebpackPlugin({
       title: 'Tekton Dashboard',
       favicon: path.resolve(__dirname, 'src/images', 'favicon.png'),
-      template: path.resolve(__dirname, 'src', 'index.template.html'),
-      meta: {
-        'Content-Security-Policy': {
-          'http-equiv': 'Content-Security-Policy',
-          content: contentSecurityPolicy[mode]
-        }
-      }
+      template: path.resolve(__dirname, 'src', 'index.template.html')
     })
   ],
   resolve: {

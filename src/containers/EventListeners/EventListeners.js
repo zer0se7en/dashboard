@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,16 +12,41 @@ limitations under the License.
 */
 
 import React from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import { getFilters, urls, useTitleSync } from '@tektoncd/dashboard-utils';
-import { FormattedDate, Table } from '@tektoncd/dashboard-components';
-import { Link as CarbonLink } from 'carbon-components-react';
+import {
+  Link as CustomLink,
+  FormattedDate,
+  Table
+} from '@tektoncd/dashboard-components';
 
 import { ListPageLayout } from '..';
 import { useEventListeners, useSelectedNamespace } from '../../api';
 
-function EventListeners({ intl }) {
+function getFormattedResources(resources) {
+  return resources.map(listener => ({
+    id: `${listener.metadata.namespace}:${listener.metadata.name}`,
+    name: (
+      <Link
+        component={CustomLink}
+        to={urls.eventListeners.byName({
+          namespace: listener.metadata.namespace,
+          eventListenerName: listener.metadata.name
+        })}
+        title={listener.metadata.name}
+      >
+        {listener.metadata.name}
+      </Link>
+    ),
+    namespace: listener.metadata.namespace,
+    date: <FormattedDate date={listener.metadata.creationTimestamp} relative />
+  }));
+}
+
+function EventListeners() {
+  const intl = useIntl();
   const location = useLocation();
   const params = useParams();
   const filters = getFilters(location);
@@ -69,49 +94,38 @@ function EventListeners({ intl }) {
     }
   ];
 
-  const eventListenersFormatted = eventListeners.map(listener => ({
-    id: `${listener.metadata.namespace}:${listener.metadata.name}`,
-    name: (
-      <Link
-        component={CarbonLink}
-        to={urls.eventListeners.byName({
-          namespace: listener.metadata.namespace,
-          eventListenerName: listener.metadata.name
-        })}
-        title={listener.metadata.name}
-      >
-        {listener.metadata.name}
-      </Link>
-    ),
-    namespace: listener.metadata.namespace,
-    date: <FormattedDate date={listener.metadata.creationTimestamp} relative />
-  }));
-
   return (
-    <ListPageLayout error={getError()} filters={filters} title="EventListeners">
-      <Table
-        headers={initialHeaders}
-        rows={eventListenersFormatted}
-        loading={isLoading}
-        selectedNamespace={selectedNamespace}
-        emptyTextAllNamespaces={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.allNamespaces',
-            defaultMessage: 'No matching {kind} found'
-          },
-          { kind: 'EventListeners' }
-        )}
-        emptyTextSelectedNamespace={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.selectedNamespace',
-            defaultMessage:
-              'No matching {kind} found in namespace {selectedNamespace}'
-          },
-          { kind: 'EventListeners', selectedNamespace }
-        )}
-      />
+    <ListPageLayout
+      error={getError()}
+      filters={filters}
+      resources={eventListeners}
+      title="EventListeners"
+    >
+      {({ resources }) => (
+        <Table
+          headers={initialHeaders}
+          rows={getFormattedResources(resources)}
+          loading={isLoading}
+          selectedNamespace={selectedNamespace}
+          emptyTextAllNamespaces={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.allNamespaces',
+              defaultMessage: 'No matching {kind} found'
+            },
+            { kind: 'EventListeners' }
+          )}
+          emptyTextSelectedNamespace={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.selectedNamespace',
+              defaultMessage:
+                'No matching {kind} found in namespace {selectedNamespace}'
+            },
+            { kind: 'EventListeners', selectedNamespace }
+          )}
+        />
+      )}
     </ListPageLayout>
   );
 }
 
-export default injectIntl(EventListeners);
+export default EventListeners;

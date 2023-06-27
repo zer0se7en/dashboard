@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Tekton Authors
+Copyright 2021-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,7 +13,7 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React from 'react';
-import { QueryClient, QueryClientProvider } from 'react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   render as baseRender,
   renderWithRouter as baseRenderWithRouter
@@ -30,6 +30,11 @@ export function getQueryClient() {
         retry: false,
         staleTime: Infinity
       }
+    },
+    logger: {
+      log: console.log, // eslint-disable-line no-console
+      warn: console.warn, // eslint-disable-line no-console
+      error: () => {}
     }
   });
 }
@@ -48,7 +53,12 @@ export function getWebSocket() {
   };
 }
 
-const namespaceContext = { selectedNamespace: null, selectNamespace: () => {} };
+const namespaceContext = {
+  namespacedMatch: null,
+  selectedNamespace: null,
+  selectNamespace: () => {},
+  setNamespacedMatch: () => {}
+};
 
 export function getAPIWrapper({ queryClient = getQueryClient() } = {}) {
   return function apiWrapper({ children }) {

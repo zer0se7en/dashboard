@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,168 +11,203 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import fetchMock from 'fetch-mock';
-
+import yaml from 'js-yaml';
 import * as API from './taskRuns';
 import * as utils from './utils';
+import * as comms from './comms';
+import { rest, server } from '../../config_frontend/msw';
 
 it('cancelTaskRun', () => {
   const name = 'foo';
   const namespace = 'foospace';
-  const returnedTaskRun = { fake: 'taskRun' };
   const payload = [
     { op: 'replace', path: '/spec/status', value: 'TaskRunCancelled' }
   ];
-  fetchMock.patch(`end:${name}`, returnedTaskRun);
-  return API.cancelTaskRun({ name, namespace }).then(response => {
-    expect(fetchMock.lastOptions()).toMatchObject({
-      body: JSON.stringify(payload)
+  jest
+    .spyOn(comms, 'patch')
+    .mockImplementation((uri, body) => Promise.resolve(body));
+  return API.cancelTaskRun({ name, namespace }).then(() => {
+    expect(comms.patch).toHaveBeenCalled();
+    expect(comms.patch.mock.lastCall[1]).toEqual(payload);
+  });
+});
+
+describe('createTaskRun', () => {
+  it('uses correct kubernetes information', () => {
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+
+    return API.createTaskRun({}).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      expect(sentBody.apiVersion).toEqual('tekton.dev/v1beta1');
+      expect(sentBody.kind).toEqual('TaskRun');
+      expect(sentBody).toHaveProperty('metadata');
+      expect(sentBody).toHaveProperty('spec');
     });
-    expect(response).toEqual(returnedTaskRun);
-    fetchMock.restore();
   });
-});
 
-it('createTaskRun uses correct kubernetes information', () => {
-  const data = { fake: 'createtaskrun' };
-  fetchMock.post(/taskruns/, { body: data, status: 201 });
-  return API.createTaskRun({}).then(response => {
-    expect(response).toEqual(data);
-    const sentBody = JSON.parse(fetchMock.lastOptions().body);
-    expect(sentBody).toHaveProperty('apiVersion', 'tekton.dev/v1beta1');
-    expect(sentBody).toHaveProperty('kind', 'TaskRun');
-    expect(sentBody).toHaveProperty('metadata');
-    expect(sentBody).toHaveProperty('spec');
-    fetchMock.restore();
-  });
-});
+  it('has correct metadata', () => {
+    const mockDateNow = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => 'fake-timestamp');
+    const namespace = 'fake-namespace';
+    const taskName = 'fake-task';
+    const labels = { app: 'fake-app' };
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
 
-it('createTaskRun has correct metadata', () => {
-  const mockDateNow = jest
-    .spyOn(Date, 'now')
-    .mockImplementation(() => 'fake-timestamp');
-  const namespace = 'fake-namespace';
-  const taskName = 'fake-task';
-  const labels = { app: 'fake-app' };
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ namespace, taskName, labels }).then(() => {
-    const sentMetadata = JSON.parse(fetchMock.lastOptions().body).metadata;
-    expect(sentMetadata.name).toMatch(taskName); // include name
-    expect(sentMetadata.name).toMatch('fake-timestamp'); // include timestamp
-    expect(sentMetadata).toHaveProperty('namespace', namespace);
-    expect(sentMetadata.labels).toHaveProperty('app', 'fake-app');
-    fetchMock.restore();
-    mockDateNow.mockRestore();
-  });
-});
+    return API.createTaskRun({ namespace, taskName, labels }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { metadata: sentMetadata } = sentBody;
+      expect(sentMetadata.name).toMatch(taskName);
+      expect(sentMetadata.name).toMatch('fake-timestamp');
+      expect(sentMetadata.namespace).toEqual(namespace);
+      expect(sentMetadata.labels.app).toEqual('fake-app');
 
-it('createTaskRun handles taskRef', () => {
-  const taskName = 'fake-task';
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec.taskRef).toHaveProperty('name', taskName);
-    expect(sentSpec.taskRef).toHaveProperty('kind', 'Task');
-    fetchMock.restore();
-  });
-});
-
-it('createTaskRun handles ClusterTask in taskRef', () => {
-  const taskName = 'fake-task';
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, kind: 'ClusterTask' }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec.taskRef).toHaveProperty('kind', 'ClusterTask');
-    fetchMock.restore();
-  });
-});
-
-it('createTaskRun handles parameters', () => {
-  const taskName = 'fake-task';
-  const params = { 'fake-param-name': 'fake-param-value' };
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, params }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec.params).toContainEqual({
-      name: 'fake-param-name',
-      value: 'fake-param-value'
+      mockDateNow.mockRestore();
     });
-    fetchMock.restore();
+  });
+
+  it('handles taskRef', () => {
+    const taskName = 'fake-task';
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.taskRef.name).toEqual(taskName);
+      expect(sentSpec.taskRef.kind).toEqual('Task');
+    });
+  });
+
+  it('handles ClusterTask in taskRef', () => {
+    const taskName = 'fake-task';
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName, kind: 'ClusterTask' }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.taskRef.kind).toEqual('ClusterTask');
+    });
+  });
+
+  it('handles parameters', () => {
+    const taskName = 'fake-task';
+    const params = { 'fake-param-name': 'fake-param-value' };
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName, params }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.params).toContainEqual({
+        name: 'fake-param-name',
+        value: 'fake-param-value'
+      });
+    });
+  });
+
+  it('handles serviceAccount', () => {
+    const taskName = 'fake-task';
+    const serviceAccount = 'fake-service-account';
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName, serviceAccount }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.serviceAccountName).toEqual(serviceAccount);
+    });
+  });
+
+  it('handles nodeSelector', () => {
+    const taskName = 'fake-task';
+    const nodeSelector = { disk: 'ssd' };
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName, nodeSelector }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.podTemplate).toEqual({ nodeSelector });
+    });
+  });
+
+  it('handles timeout', () => {
+    const taskName = 'fake-task';
+    const timeout = 'fake-timeout';
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.createTaskRun({ taskName, timeout }).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      const sentBody = comms.post.mock.lastCall[1];
+      const { spec: sentSpec } = sentBody;
+      expect(sentSpec.timeout).toEqual(timeout);
+    });
   });
 });
 
-it('createTaskRun handles resources', () => {
-  const taskName = 'fake-task';
-  const resources = {
-    inputs: { 'fake-task-input': 'fake-input-resource' },
-    outputs: { 'fake-task-output': 'fake-output-resource' }
+it('createTaskRunRaw', () => {
+  const taskRunRaw = {
+    apiVersion: 'tekton.dev/v1beta1',
+    kind: 'TaskRun',
+    metadata: { name: 'test-task-run-name', namespace: 'test-namespace' },
+    spec: {
+      taskSpec: {
+        steps: [
+          {
+            image: 'busybox',
+            name: 'echo',
+            script: '#!/bin/ash\necho "Hello World!"\n'
+          }
+        ]
+      }
+    }
   };
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, resources }).then(() => {
-    const sentResources = JSON.parse(fetchMock.lastOptions().body).spec
-      .resources;
-    expect(sentResources.inputs).toContainEqual({
-      name: 'fake-task-input',
-      resourceRef: { name: 'fake-input-resource' }
-    });
-    expect(sentResources.outputs).toContainEqual({
-      name: 'fake-task-output',
-      resourceRef: { name: 'fake-output-resource' }
-    });
-    fetchMock.restore();
-  });
-});
+  jest
+    .spyOn(comms, 'post')
+    .mockImplementation((uri, body) => Promise.resolve(body));
 
-it('createTaskRun handles serviceAccount', () => {
-  const taskName = 'fake-task';
-  const serviceAccount = 'fake-service-account';
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, serviceAccount }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec).toHaveProperty('serviceAccountName', serviceAccount);
-    fetchMock.restore();
-  });
-});
-
-it('createTaskRun handles nodeSelector', () => {
-  const taskName = 'fake-task';
-  const nodeSelector = { disk: 'ssd' };
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, nodeSelector }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec).toHaveProperty('podTemplate', { nodeSelector });
-    fetchMock.restore();
-  });
-});
-
-it('createTaskRun handles timeout', () => {
-  const taskName = 'fake-task';
-  const timeout = 'fake-timeout';
-  fetchMock.post(/taskruns/, {});
-  return API.createTaskRun({ taskName, timeout }).then(() => {
-    const sentSpec = JSON.parse(fetchMock.lastOptions().body).spec;
-    expect(sentSpec).toHaveProperty('timeout', timeout);
-    fetchMock.restore();
+  return API.createTaskRunRaw({
+    namespace: 'test-namespace',
+    payload: taskRunRaw
+  }).then(() => {
+    expect(comms.post).toHaveBeenCalled();
+    expect(comms.post.mock.lastCall[1]).toEqual(taskRunRaw);
   });
 });
 
 it('deleteTaskRun', () => {
   const name = 'foo';
   const data = { fake: 'taskRun' };
-  fetchMock.delete(`end:${name}`, data);
+  server.use(
+    rest.delete(new RegExp(`/${name}$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.deleteTaskRun({ name }).then(taskRun => {
     expect(taskRun).toEqual(data);
-    fetchMock.restore();
   });
 });
 
 it('getTaskRun', () => {
   const name = 'foo';
   const data = { fake: 'taskRun' };
-  fetchMock.get(`end:${name}`, data);
+  server.use(
+    rest.get(new RegExp(`/${name}$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getTaskRun({ name }).then(taskRun => {
     expect(taskRun).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -180,10 +215,9 @@ it('getTaskRuns', () => {
   const data = {
     items: 'taskRuns'
   };
-  fetchMock.get(/taskruns/, data);
+  server.use(rest.get(/\/taskruns\//, (req, res, ctx) => res(ctx.json(data))));
   return API.getTaskRuns().then(taskRuns => {
     expect(taskRuns).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -192,10 +226,9 @@ it('getTaskRuns With Query Params', () => {
   const data = {
     items: 'taskRuns'
   };
-  fetchMock.get(/taskruns/, data);
+  server.use(rest.get(/\/taskruns\//, (req, res, ctx) => res(ctx.json(data))));
   return API.getTaskRuns({ taskName }).then(taskRuns => {
     expect(taskRuns).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -239,22 +272,208 @@ it('useTaskRun', () => {
 });
 
 it('rerunTaskRun', () => {
-  const filter = 'end:/taskruns/';
   const originalTaskRun = {
-    metadata: { name: 'fake_taskRun' },
+    metadata: { name: 'fake_taskRun', namespace: 'fake_namespace' },
     spec: { status: 'fake_status' },
     status: 'fake_status'
   };
-  const newTaskRun = { metadata: { name: 'fake_taskRun_rerun' } };
-  fetchMock.post(filter, { body: newTaskRun, status: 201 });
-  return API.rerunTaskRun(originalTaskRun).then(data => {
-    const body = JSON.parse(fetchMock.lastCall(filter)[1].body);
-    expect(body.metadata.generateName).toMatch(
-      new RegExp(originalTaskRun.metadata.name)
-    );
-    expect(body.status).toBeUndefined();
-    expect(body.spec.status).toBeUndefined();
-    expect(data).toEqual(newTaskRun);
-    fetchMock.restore();
+  jest
+    .spyOn(comms, 'post')
+    .mockImplementation((uri, body) => Promise.resolve(body));
+
+  const rerun = {
+    apiVersion: 'tekton.dev/v1beta1',
+    kind: 'TaskRun',
+    metadata: {
+      annotations: {},
+      generateName: `${originalTaskRun.metadata.name}-r-`,
+      labels: {
+        'dashboard.tekton.dev/rerunOf': originalTaskRun.metadata.name
+      },
+      namespace: originalTaskRun.metadata.namespace
+    },
+    spec: {}
+  };
+
+  return API.rerunTaskRun(originalTaskRun).then(() => {
+    expect(comms.post).toHaveBeenCalled();
+    expect(comms.post.mock.lastCall[1]).toEqual(rerun);
+  });
+});
+
+describe('generateNewTaskRunPayload', () => {
+  it('rerun with minimum possible fields', () => {
+    const taskRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'TaskRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace'
+      },
+      spec: {
+        taskRef: {
+          name: 'simple'
+        }
+      }
+    };
+    const { namespace, payload } = API.generateNewTaskRunPayload({
+      taskRun,
+      rerun: true
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  annotations: {}
+  generateName: test-r-
+  labels:
+    dashboard.tekton.dev/rerunOf: test
+  namespace: test-namespace
+spec:
+  taskRef:
+    name: simple
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('rerun with all processed fields', () => {
+    const taskRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'TaskRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace',
+        annotations: {
+          keya: 'valuea',
+          'kubectl.kubernetes.io/last-applied-configuration':
+            '{"apiVersion": "tekton.dev/v1beta1", "keya": "valuea"}'
+        },
+        labels: {
+          key1: 'valuel',
+          key2: 'value2',
+          'tekton.dev/task': 'foo'
+        },
+        uid: '111-233-33',
+        resourceVersion: 'aaaa'
+      },
+      spec: {
+        taskRef: {
+          name: 'simple'
+        },
+        params: [{ name: 'param-1' }, { name: 'param-2' }]
+      },
+      status: { startTime: '0' }
+    };
+    const { namespace, payload } = API.generateNewTaskRunPayload({
+      taskRun,
+      rerun: true
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  annotations:
+    keya: valuea
+  generateName: test-r-
+  labels:
+    key1: valuel
+    key2: value2
+    dashboard.tekton.dev/rerunOf: test
+  namespace: test-namespace
+spec:
+  taskRef:
+    name: simple
+  params:
+    - name: param-1
+    - name: param-2
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('edit with minimum possible fields', () => {
+    const taskRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'TaskRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace'
+      },
+      spec: {
+        taskRef: {
+          name: 'simple'
+        }
+      }
+    };
+    const { namespace, payload } = API.generateNewTaskRunPayload({
+      taskRun,
+      rerun: false
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  annotations: {}
+  generateName: test-
+  labels: {}
+  namespace: test-namespace
+spec:
+  taskRef:
+    name: simple
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('edit with all processed fields', () => {
+    const taskRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'TaskRun',
+      metadata: {
+        annotations: {
+          keya: 'valuea',
+          'kubectl.kubernetes.io/last-applied-configuration':
+            '{"apiVersion": "tekton.dev/v1beta1", "keya": "valuea"}'
+        },
+        labels: {
+          key1: 'valuel',
+          key2: 'value2',
+          'tekton.dev/task': 'foo',
+          'tekton.dev/run': 'bar'
+        },
+        name: 'test',
+        namespace: 'test-namespace',
+        uid: '111-233-33',
+        resourceVersion: 'aaaa'
+      },
+      spec: {
+        taskRef: {
+          name: 'simple'
+        },
+        params: [{ name: 'param-1' }, { name: 'param-2' }]
+      },
+      status: { startTime: '0' }
+    };
+    const { namespace, payload } = API.generateNewTaskRunPayload({
+      taskRun,
+      rerun: false
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  annotations:
+    keya: valuea
+  generateName: test-
+  labels:
+    key1: valuel
+    key2: value2
+  namespace: test-namespace
+spec:
+  taskRef:
+    name: simple
+  params:
+    - name: param-1
+    - name: param-2
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
   });
 });

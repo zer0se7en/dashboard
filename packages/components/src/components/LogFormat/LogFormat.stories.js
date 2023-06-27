@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,7 +11,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
 import LogFormat from './LogFormat';
 
 const ansiColors = (() => {
@@ -55,27 +54,37 @@ const ansiTextStyles = (() => {
 
 export default {
   component: LogFormat,
-  title: 'Components/LogFormat'
+  title: 'LogFormat'
 };
 
-export const Colors = () => <LogFormat>{ansiColors}</LogFormat>;
-Colors.parameters = {
-  backgrounds: {
-    default: 'gray90'
+export const Colors = {
+  args: {
+    children: ansiColors
+  },
+  parameters: {
+    backgrounds: {
+      default: 'gray90'
+    }
   }
 };
 
-export const TextStyles = () => <LogFormat>{ansiTextStyles}</LogFormat>;
+export const TextStyles = {
+  args: {
+    children: ansiTextStyles
+  }
+};
 
-export const URLDetection = () => (
-  <LogFormat>{`
+export const URLDetection = {
+  args: {
+    children: `
 + curl https://raw.githubusercontent.com/tektoncd/pipeline/master/tekton/koparse/koparse.py --output /usr/bin/koparse.py
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0   0  3946    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     01100  3946  100  3946    0     0  13421      0 --:--:-- --:--:-- --:--:-- 13376
+                                  Dload  Upload   Total   Spent    Left  Speed
+    0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0   0  3946    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     01100  3946  100  3946    0     0  13421      0 --:--:-- --:--:-- --:--:-- 13376
 + chmod +x /usr/bin/koparse.py
 + REGIONS=(us eu asia)
 + IMAGES=(gcr.io/tekton-releases/github.com/tektoncd/dashboard/cmd/dashboard)
 + BUILT_IMAGES=($(/usr/bin/koparse.py --path /workspace/output/bucket-for-dashboard/latest/tekton-dashboard-release.yaml --base gcr.io/tekton-releases/github.com/tektoncd/dashboard --images \${IMAGES[@]}))
-`}</LogFormat>
-);
+`
+  }
+};

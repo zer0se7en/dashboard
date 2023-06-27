@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,29 +11,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
 import { action } from '@storybook/addon-actions';
 
 import TextInput from './TextInput';
 
-const props = {
-  id: 'text-input-id',
-  onChange: action('onChange'),
-  onClick: action('onClick')
-};
-
 export default {
+  args: {
+    id: 'text-input-id',
+    onChange: action('onChange'),
+    onClick: action('onClick')
+  },
   component: TextInput,
-  title: 'Components/TextInput'
+  title: 'TextInput'
 };
 
-export const Base = () => (
-  <TextInput
-    {...props}
-    labelText="foo"
-    helperText="this is a description of input foo"
-    placeholder="bar"
-  />
-);
+export const Base = {
+  args: {
+    labelText: 'foo',
+    helperText: 'this is a description of input foo',
+    placeholder: 'bar'
+  }
+};
 
-export const Loading = () => <TextInput {...props} loading />;
+export const Loading = { args: { loading: true } };

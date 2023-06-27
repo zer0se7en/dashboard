@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -46,8 +46,10 @@ func registerWeb(resource endpoints.Resource, mux *http.ServeMux) {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; font-src 'self' https://1.www.s81c.com;")
+
 		switch resource.Options.XFrameOptions {
-		case "": //DO nothing, no X-Frame-Options header
+		case "": // Do nothing, no X-Frame-Options header
 		case "SAMEORIGIN":
 			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		default:
@@ -61,7 +63,6 @@ func registerWeb(resource endpoints.Resource, mux *http.ServeMux) {
 func registerHealthProbe(r endpoints.Resource, mux *http.ServeMux) {
 	logging.Log.Info("Adding API for health")
 	mux.HandleFunc("/health", r.CheckHealth)
-
 }
 
 // registerReadinessProbe registers the /readiness endpoint
@@ -91,7 +92,7 @@ type Server struct {
 
 type responder struct{}
 
-func (r *responder) Error(w http.ResponseWriter, req *http.Request, err error) {
+func (r *responder) Error(w http.ResponseWriter, _ *http.Request, err error) {
 	logging.Log.Errorf("Error while proxying request: %v", err)
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
@@ -125,17 +126,13 @@ func Register(r endpoints.Resource, cfg *rest.Config) (*Server, error) {
 	logging.Log.Info("Adding Kube API")
 	apiProxyPrefix := "/api/"
 	apisProxyPrefix := "/apis/"
-	proxyHandlerAPI, err := NewProxyHandler(apiProxyPrefix, cfg, 30*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	proxyHandlerAPIs, err := NewProxyHandler(apisProxyPrefix, cfg, 30*time.Second)
+	proxyHandler, err := NewProxyHandler(cfg, 30*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(apiProxyPrefix, proxyHandlerAPI)
-	mux.Handle(apisProxyPrefix, proxyHandlerAPIs)
+	mux.Handle(apiProxyPrefix, proxyHandler)
+	mux.Handle(apisProxyPrefix, proxyHandler)
 
 	logging.Log.Info("Adding Dashboard APIs")
 	registerWeb(r, mux)
@@ -148,10 +145,10 @@ func Register(r endpoints.Resource, cfg *rest.Config) (*Server, error) {
 }
 
 // NewProxyHandler creates an API proxy handler for the cluster
-func NewProxyHandler(apiProxyPrefix string, cfg *rest.Config, keepalive time.Duration) (http.Handler, error) {
+func NewProxyHandler(cfg *rest.Config, keepalive time.Duration) (http.Handler, error) {
 	host := cfg.Host
 	if !strings.HasSuffix(host, "/") {
-		host = host + "/"
+		host += "/"
 	}
 	target, err := url.Parse(host)
 	if err != nil {
@@ -172,7 +169,7 @@ func NewProxyHandler(apiProxyPrefix string, cfg *rest.Config, keepalive time.Dur
 	proxy.UseRequestLocation = true
 	proxy.UseLocationHost = true
 
-	proxyServer := http.Handler(proxy)
+	proxyServer := protectWebSocket(proxy)
 
 	return proxyServer, nil
 }
@@ -187,7 +184,50 @@ func (s *Server) ServeOnListener(l net.Listener) error {
 	CSRF := csrf.Protect()
 
 	server := http.Server{
-		Handler: CSRF(s.handler),
+		Handler:           CSRF(s.handler),
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 	return server.Serve(l)
+}
+
+// isUpgradeRequest returns true if the given request is a connection upgrade request
+func isUpgradeRequest(req *http.Request) bool {
+	connection := req.Header.Get("Connection")
+	return strings.ToLower(connection) == "upgrade"
+}
+
+func checkUpgradeSameOrigin(req *http.Request) bool {
+	host := req.Host
+	origin := req.Header.Get("Origin")
+
+	if len(origin) == 0 || !isUpgradeRequest(req) {
+		return true
+	}
+
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	return u.Host == host
+}
+
+// Verify Origin header on Upgrade requests to prevent cross-origin websocket hijacking
+func protectWebSocket(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		reqURL := req.URL.RequestURI()
+		reqURL = strings.ReplaceAll(reqURL, "\n", "")
+		reqURL = strings.ReplaceAll(reqURL, "\r", "")
+		logging.Log.Debugf("Proxying request: %s %s %s", req.RemoteAddr, req.Method, reqURL)
+		if !checkUpgradeSameOrigin(req) {
+			origin := req.Header.Get("Origin")
+			origin = strings.ReplaceAll(origin, "\n", "")
+			origin = strings.ReplaceAll(origin, "\r", "")
+			logging.Log.Warnf("websocket: Connection upgrade blocked, Host: %s, Origin: %s", req.Host, origin)
+			http.Error(w, "websocket: request origin not allowed", http.StatusForbidden)
+			return
+		}
+
+		h.ServeHTTP(w, req)
+	})
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -16,6 +16,8 @@ package endpoints
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/tektoncd/dashboard/pkg/logging"
 )
 
 // Properties : properties we want to be able to retrieve via REST
@@ -36,10 +38,10 @@ type Properties struct {
 // GetProperties is used to get the installed namespace for the Dashboard,
 // the version of the Tekton Dashboard, the version of Tekton Pipelines,
 // when one's in read-only mode and Tekton Triggers version (if Installed)
-func (r Resource) GetProperties(response http.ResponseWriter, request *http.Request) {
+func (r Resource) GetProperties(response http.ResponseWriter, _ *http.Request) {
 	pipelineNamespace := r.Options.GetPipelinesNamespace()
 	triggersNamespace := r.Options.GetTriggersNamespace()
-	dashboardVersion := getDashboardVersion(r, r.Options.InstallNamespace)
+	dashboardVersion := r.GetDashboardVersion()
 	pipelineVersion := getPipelineVersion(r, pipelineNamespace)
 
 	properties := Properties{
@@ -69,5 +71,7 @@ func (r Resource) GetProperties(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	response.Header().Set("Pragma", "no-cache")
 	response.Header().Set("Expires", "0")
-	json.NewEncoder(response).Encode(properties)
+	if err := json.NewEncoder(response).Encode(properties); err != nil {
+		logging.Log.Error("Failed encoding properties")
+	}
 }

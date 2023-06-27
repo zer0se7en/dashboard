@@ -1,117 +1,78 @@
 <!--
+
 ---
-title: "Dashboard"
-linkTitle: "Dashboard"
+title: Dashboard
+linkTitle: Dashboard
 weight: 6
 description: >
-  General-Purpose, Web-Based UI
+  Web-based UI for Tekton Pipelines and Tekton Triggers resources
 cascade:
   github_project_repo: https://github.com/tektoncd/dashboard
 ---
+
 -->
 
-## Overview
+# Tekton Dashboard
 
-Tekton Dashboard is a general-purpose, web-based UI for 
-[Tekton Pipelines](https://github.com/tektoncd/pipeline) and 
-[Tekton triggers](https://github.com/tektoncd/triggers) resources.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/tektoncd/dashboard/blob/main/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/tektoncd/dashboard)](https://goreportcard.com/report/tektoncd/dashboard)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/6543/badge)](https://bestpractices.coreinfrastructure.org/projects/6543)
+
+<p align="center">
+  <img src="tekton-dashboard-color.svg" alt="Tekton Dashboard logo (Tekton cat inspecting resources with a magnifying glass)" width="200" />
+</p>
+
+Tekton Dashboard is a general purpose, web-based UI for [Tekton Pipelines](https://github.com/tektoncd/pipeline) and [Tekton Triggers](https://github.com/tektoncd/triggers) resources.
 
 It allows users to manage and view Tekton resource creation, execution, and completion.
 
-Some of the features the Dashboard supports:
-- Realtime view of `PipelineRun` and `TaskRun` status and logs.
-- Filter lists of resources by label.
-- View resource details and YAML.
-- Show resources for the whole cluster or limit visibility to a particular namespace.
-- Import resources directly from a git repository.
-- Add functionality using extensions.
+Some of the features the Tekton Dashboard supports:
+- Realtime view of `PipelineRun` and `TaskRun` status and logs
+- Filter resources by label
+- View resource overview and YAML
+- Show resources for the whole cluster or limit visibility to a particular namespace
+- Import resources directly from a git repository
+- Add functionality through extensions
 
+![Dashboard UI workloads page](dashboard-ui.jpg)
 
-## Tutorial
+## Read the docs
 
-Try out the [tutorial](https://katacoda.com/tektoncd/scenarios/dashboard) 
-on Katacoda to install the Dashboard in a guided sandbox environment and explore 
-some of its features.
+- [Installing Tekton Dashboard](./install.md)
+- Jump in with [the "Getting started" tutorial!](./tutorial.md)
+- Take a look at our [roadmap](https://github.com/tektoncd/dashboard/blob/main/roadmap.md)
+- Discover our [releases](https://github.com/tektoncd/dashboard/blob/main/releases.md)
+- Try our [walk-throughs](./walkthrough/README.md) for more details on deploying and configuring the Tekton Dashboard for some common scenarios
+- Learn how to add additional resource types to the Tekton Dashboard using [extensions](./extensions.md)
 
-## Installation
+Version specific links are available in the [releases](https://github.com/tektoncd/dashboard/blob/main/releases.md) page and on the
+[Tekton website](https://tekton.dev/docs).
 
-{{% tabs %}}
+## Browser support
 
-{{% tab "Kubernetes" %}}
-To install the latest release of Tekton Dashboard, run the command below:
+The Tekton Dashboard has been tested on modern evergreen browsers.
 
-```bash
-kubectl apply --filename https://github.com/tektoncd/dashboard/releases/latest/download/tekton-dashboard-release.yaml
-```
-{{% /tab %}}
+It generally supports the current and previous stable versions of:
 
-{{% tab "OpenShift" %}}
-To install the latest release of Tekton Dashboard, run the command below:
+- Google Chrome (Windows, macOS, Linux)
+- Mozilla Firefox (Windows, macOS, Linux)
+- Apple Safari (macOS)
+- Microsoft Edge (Windows)
 
-```bash
-kubectl apply --filename https://github.com/tektoncd/dashboard/releases/latest/download/openshift-tekton-dashboard-release.yaml
-```
-{{% /tab %}}
+Older versions or other browsers may work, but some features may be missing or not function as expected.
 
-{{% /tabs %}}
+## Want to contribute
 
-{{% alert title="Important" color="warning" %}}
-The latest release **may not be compatible** with your Tekton Pipelines
-installation, should you have an earlier release of Tekton Pipelines
-installed. For more compatibility information, see the
-[Tekton Dashboard's "Which version should I use?"](https://github.com/tektoncd/dashboard#which-version-should-i-use)
-section.
+We are so excited to have you!
 
-If you would like to install an earlier release of Tekton Dashboard
-for compatibility reasons, see the note below.
-{{% /alert %}}
+- Feature requests and bug reports welcome, please [open an issue](https://github.com/tektoncd/dashboard/issues/new/choose)
+- See [CONTRIBUTING.md](https://github.com/tektoncd/dashboard/blob/main/CONTRIBUTING.md) for an overview of our processes
+- See [DEVELOPMENT.md](https://github.com/tektoncd/dashboard/blob/main/DEVELOPMENT.md) for how to get started
+- Look at our
+  [good first issues](https://github.com/tektoncd/dashboard/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+  and our
+  [help wanted issues](https://github.com/tektoncd/dashboard/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 
-{{% alert title="Note" color="success" %}}
-To install a different release of Tekton Dashboard, find the `.yaml` file
-you would like to use on the [Tekton Dashboard Releases](https://github.com/tektoncd/dashboard/releases)
-page, and run the command below:
+---
 
-```bash
-kubectl apply --filename <release-url>
-```
-where `<release-url>` is the URL of the release you would like to use.
-
-{{% /alert %}}
-
-It may take a few moments before the installation completes. You can check
-the progress with the following command:
-
-```sh
-kubectl get pods --namespace tekton-pipelines
-```
-
-Confirm that every component listed has the status `Running`.
-
-## Usage
-
-Tekton Dashboard is accessible through its `cluster IP` service with
-a [reverse proxy](https://kubernetes.io/docs/tasks/extend-kubernetes/http-proxy-access-api/).
-Run the following command:
-
-```bash
-kubectl proxy --port=8080
-```
-
-Then you can open the Dashboard in your browser at
-
-http://localhost:8080/api/v1/namespaces/tekton-pipelines/services/tekton-dashboard:http/proxy/
-
-Alternatively, you can use port forwarding:
-
-```bash
-kubectl --namespace tekton-pipelines port-forward svc/tekton-dashboard 9097:9097
-```
-
-Once set up, the Dashboard is available in the browser at
-http://localhost:9097
-
-## What's next
-
-Try out some of our [walk-throughs](./walkthrough) for more details on deploying and configuring the
-Tekton Dashboard for some common scenarios. For more information, see the
-[Tekton Dashboard GitHub repository](https://github.com/tektoncd/dashboard).
+Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/). Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).

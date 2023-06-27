@@ -55,7 +55,7 @@ the dashboard repo, a terminal window and a text editor.
 
 1. Watch logs of dashboard-release.
 
-1. Once the pipeline run is complete, check its results:
+1. Once the PipelineRun is complete, check its results:
 
     ```bash
     tkn --context dogfooding pr describe <pipeline-run-name>
@@ -63,12 +63,9 @@ the dashboard repo, a terminal window and a text editor.
     (...)
     📝 Results
 
-    NAME                                         VALUE
-    commit-sha                                   6ea31d92a97420d4b7af94745c45b02447ceaa19
-    tekton-dashboard-release                     https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.19.0/tekton-dashboard-release.yaml
-    tekton-dashboard-release-readonly            https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.19.0/tekton-dashboard-release-readonly.yaml
-    tekton-dashboard-openshift-release           https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.19.0/openshift-tekton-dashboard-release.yaml
-    tekton-dashboard-openshift-release-readonly  https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.19.0/openshift-tekton-dashboard-release-readonly.yaml
+    NAME                    VALUE
+    release                 https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.32.0/release.yaml
+    release-full            https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.32.0/release-full.yaml
 
     (...)
     ```
@@ -87,34 +84,56 @@ Creating the release announcement is currently a manual process but will be auto
 1. [Draft a new release](https://github.com/tektoncd/dashboard/releases/new)
 
 1. Copy the format from an existing release and insert details of the relevant changes and contributors.
+   - You can find the Rekor UUID by running `rekor-cli search --sha $DASHBOARD_IMAGE_SHA`
+   - For LTS releases ensure this is included in the title and description
 
 1. Add any upgrade and deprecation notices as required.
 
-1. Attach the release manifests to the release: `tekton-dashboard-*.yaml` and `openshift-tekton-dashboard-*.yaml`.
+1. Attach the release manifests to the release: `release.yaml` and `release-full.yaml`.
 
 1. Once the release notes are ready, un-check the "This is a pre-release" checkbox since you're making a legit for-reals release!
 
 1. Publish the GitHub release once all notes are correct and in order.
 
+1. Create a branch for the release named `release-v<version number>.x`, e.g. [`release-v0.28.x`](https://github.com/tektoncd/dashboard/tree/release-v0.28.x)
+   and push it to the repo https://github.com/tektoncd/dashboard.
+   (This can be done on the Github UI.)
+   Make sure to fetch the commit specified in `TEKTON_RELEASE_GIT_SHA` to create the released branch.
+
+   For LTS releases the branch should be named `release-v<version number>.x-lts`, e.g. [`release-v0.32.x-lts`](https://github.com/tektoncd/dashboard/tree/release-v0.32.x-lts).
+
 ## Post-release tasks
 
-1. Edit `README.md` on `main` branch, add entry to docs table with latest release links.
+1. If the release requires a new minimum version of Kubernetes,
+   edit `install.md` on the `main` branch and add the new requirement in the
+   "Pre-requisites" section
 
-1. Push & make PR for updated `README.md`
+1. Edit `releases.md` on the `main` branch, add an entry for the release.
+   - In case of a patch release, replace the latest release with the new one,
+     including links to docs and examples. Append the new release to the list
+     of patch releases as well.
+   - In case of a minor or major release, add a new entry for the
+     release, including links to docs
+   - Check if any release is EOL, if so move it to the "End of Life Releases"
+     section
+
+1. Push & make PR for updated `releases.md` and `install.md`
 
 1. Test the release that you just made against your own cluster (note `--context my-dev-cluster`):
 
      ```bash
      # Test latest
-     kubectl --context my-dev-cluster apply --filename     https://storage.googleapis.com/tekton-releases/dashboard/latest/tekton-dashboard-release.yaml
+     kubectl --context my-dev-cluster apply --filename     https://storage.googleapis.com/tekton-releases/dashboard/latest/release-full.yaml
      ```
 
      ```bash
      # Test backport
-     kubectl --context my-dev-cluster apply --filename     https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.19.2/tekton-dashboard-release.yaml
+     kubectl --context my-dev-cluster apply --filename     https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.32.0/release-full.yaml
      ```
 
 1. Announce the release in Slack channels #general, #announcements, and #dashboard.
+
+1. Update the website sync config to include the new release by adding the new tag to the top of the list in https://github.com/tektoncd/website/blob/main/sync/config/dashboard.yaml
 
 Congratulations, you're done!
 
@@ -136,6 +155,6 @@ Congratulations, you're done!
 
 ## Important: Switch `kubectl` back to your own cluster by default.
 
-    ```bash
-    kubectl config use-context my-dev-cluster
-    ```
+```bash
+kubectl config use-context my-dev-cluster
+```

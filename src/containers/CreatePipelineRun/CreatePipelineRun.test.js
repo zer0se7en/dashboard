@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,18 +12,18 @@ limitations under the License.
 */
 
 import React from 'react';
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 
 import { renderWithRouter } from '../../utils/test';
 
 import CreatePipelineRun from './CreatePipelineRun';
 import * as API from '../../api';
 import * as APIUtils from '../../api/utils';
-import * as PipelineResourcesAPI from '../../api/pipelineResources';
 import * as PipelineRunsAPI from '../../api/pipelineRuns';
 import * as PipelinesAPI from '../../api/pipelines';
 import * as ServiceAccountsAPI from '../../api/serviceAccounts';
 
+const submitButton = allByText => allByText('Create')[0];
 const pipelines = [
   {
     metadata: {
@@ -32,10 +32,6 @@ const pipelines = [
       uid: 'id-pipeline-1'
     },
     spec: {
-      resources: [
-        { name: 'resource-1', type: 'type-1' },
-        { name: 'resource-2', type: 'type-2' }
-      ],
       params: [
         {
           name: 'param-1',
@@ -72,18 +68,6 @@ const serviceAccount = {
   }
 };
 
-const pipelineResource1 = {
-  metadata: { name: 'pipeline-resource-1' },
-  spec: { type: 'type-1' }
-};
-
-const pipelineResource2 = {
-  metadata: { name: 'pipeline-resource-2' },
-  spec: { type: 'type-2' }
-};
-
-const history = { push: () => {} };
-
 describe('CreatePipelineRun', () => {
   beforeEach(() => {
     jest
@@ -92,11 +76,6 @@ describe('CreatePipelineRun', () => {
     jest
       .spyOn(PipelinesAPI, 'usePipelines')
       .mockImplementation(() => ({ data: pipelines }));
-    jest
-      .spyOn(PipelineResourcesAPI, 'usePipelineResources')
-      .mockImplementation(() => ({
-        data: [pipelineResource1, pipelineResource2]
-      }));
     jest
       .spyOn(PipelineRunsAPI, 'usePipelineRuns')
       .mockImplementation(() => ({ data: [] }));
@@ -109,8 +88,6 @@ describe('CreatePipelineRun', () => {
     jest
       .spyOn(APIUtils, 'useSelectedNamespace')
       .mockImplementation(() => ({ selectedNamespace: 'namespace-1' }));
-
-    jest.spyOn(history, 'push');
   });
 
   it('renders labels', () => {
@@ -147,5 +124,105 @@ describe('CreatePipelineRun', () => {
     const { getByText } = renderWithRouter(<CreatePipelineRun />);
     fireEvent.click(getByText(/cancel/i));
     expect(window.history.pushState).toHaveBeenCalledTimes(2);
+  });
+});
+
+const pipelineRunRawGenerateName = {
+  apiVersion: 'tekton.dev/v1beta1',
+  kind: 'PipelineRun',
+  metadata: {
+    annotations: {},
+    generateName: 'test-pipeline-run-name-',
+    labels: {},
+    namespace: 'test-namespace'
+  },
+  spec: {
+    pipelineSpec: {
+      tasks: [
+        {
+          name: 'hello',
+          taskSpec: {
+            steps: [
+              {
+                image: 'busybox',
+                name: 'echo',
+                script: '#!/bin/ash\necho "Hello World!"\n'
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+};
+
+const expectedPipelineRun = `apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: run-1111111111
+  namespace: test-namespace
+  labels: {}
+spec:
+  pipelineRef:
+    name: ''
+  status: ''`;
+const expectedPipelineRunOneLine = expectedPipelineRun.replace(/\r?\n|\r/g, '');
+const findNameRegexp = /name: run-\S+/;
+describe('CreatePipelineRun yaml mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    jest.spyOn(window.history, 'pushState');
+  });
+
+  it('renders with namespace', async () => {
+    jest
+      .spyOn(PipelineRunsAPI, 'createPipelineRunRaw')
+      .mockImplementation(() => Promise.resolve({ data: {} }));
+    jest
+      .spyOn(PipelineRunsAPI, 'usePipelineRun')
+      .mockImplementation(() => ({ data: pipelineRunRawGenerateName }));
+
+    const { getByRole } = renderWithRouter(<CreatePipelineRun />, {
+      path: '/create',
+      route: '/create?mode=yaml&namespace=test-namespace'
+    });
+
+    expect(getByRole(/textbox/)).toBeTruthy();
+    let actual = getByRole(/textbox/).textContent;
+    actual = actual.replace(findNameRegexp, 'name: run-1111111111');
+    expect(actual.trim()).toEqual(expectedPipelineRunOneLine);
+  });
+
+  it('handle submit with pipelinerun and namespace', async () => {
+    jest
+      .spyOn(PipelineRunsAPI, 'createPipelineRunRaw')
+      .mockImplementation(() => Promise.resolve({ data: {} }));
+    jest
+      .spyOn(PipelineRunsAPI, 'usePipelineRun')
+      .mockImplementation(() => ({ data: pipelineRunRawGenerateName }));
+
+    const { queryAllByText } = renderWithRouter(<CreatePipelineRun />, {
+      path: '/create',
+      route:
+        '/create?mode=yaml&pipelineRunName=test-pipeline-run-name&namespace=test-namespace'
+    });
+
+    expect(submitButton(queryAllByText)).toBeTruthy();
+
+    fireEvent.click(submitButton(queryAllByText));
+
+    await waitFor(() => {
+      expect(PipelineRunsAPI.createPipelineRunRaw).toHaveBeenCalledTimes(1);
+    });
+    expect(PipelineRunsAPI.createPipelineRunRaw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'test-namespace',
+        payload: pipelineRunRawGenerateName
+      })
+    );
+    await waitFor(() => {
+      expect(window.history.pushState).toHaveBeenCalledTimes(2);
+    });
   });
 });

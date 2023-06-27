@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,89 +12,50 @@ limitations under the License.
 */
 
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { injectIntl } from 'react-intl';
-import {
-  getParams,
-  getResources,
-  taskRunHasWarning,
-  urls
-} from '@tektoncd/dashboard-utils';
-import {
-  Link as CarbonLink,
-  ContentSwitcher,
-  Switch
-} from 'carbon-components-react';
+import { useIntl } from 'react-intl';
+import { getParams, taskRunHasWarning } from '@tektoncd/dashboard-utils';
+import { ContentSwitcher, Switch, Tooltip } from 'carbon-components-react';
+import { Information16 } from '@carbon/icons-react';
 
-import {
-  DetailsHeader,
-  Param,
-  ResourceTable,
-  Tab,
-  Table,
-  Tabs,
-  ViewYAML
-} from '..';
+import { DetailsHeader, Param, Tab, Table, Tabs, ViewYAML } from '..';
 
-function getDescriptions(array = []) {
+function HelpIcon({ title }) {
+  const intl = useIntl();
+
+  if (!title) {
+    return null;
+  }
+
+  return (
+    <Tooltip
+      align="end"
+      direction="top"
+      iconDescription={intl.formatMessage({
+        id: 'dashboard.resourceDetails.description',
+        defaultMessage: 'Description'
+      })}
+      renderIcon={Information16}
+      showIcon
+    >
+      {title}
+    </Tooltip>
+  );
+}
+
+function getDescriptions(array) {
+  if (!array) {
+    return {};
+  }
+
   return array.reduce((accumulator, { name, description }) => {
     accumulator[name] = description;
     return accumulator;
   }, {});
 }
 
-function resourceTable(title, namespace, resources, intl) {
-  return (
-    <ResourceTable
-      title={title}
-      rows={resources.map(({ name, resourceRef, resourceSpec }) => ({
-        id: name,
-        name,
-        value:
-          resourceRef && resourceRef.name ? (
-            <Link
-              component={CarbonLink}
-              to={urls.pipelineResources.byName({
-                namespace,
-                pipelineResourceName: resourceRef.name
-              })}
-            >
-              {resourceRef.name}
-            </Link>
-          ) : (
-            <ViewYAML resource={resourceSpec} dark />
-          )
-      }))}
-      headers={[
-        {
-          key: 'name',
-          header: intl.formatMessage({
-            id: 'dashboard.tableHeader.name',
-            defaultMessage: 'Name'
-          })
-        },
-        {
-          key: 'value',
-          header: intl.formatMessage({
-            id: 'dashboard.tableHeader.value',
-            defaultMessage: 'Value'
-          })
-        }
-      ]}
-    />
-  );
-}
-
-const TaskRunDetails = ({
-  intl,
-  onViewChange,
-  pod,
-  task,
-  taskRun,
-  view,
-  showIO
-}) => {
+const TaskRunDetails = ({ onViewChange, pod, task, taskRun, view }) => {
+  const intl = useIntl();
   const displayName = taskRun.metadata.name;
   const taskSpec = task?.spec || taskRun.spec.taskSpec;
 
@@ -103,6 +64,20 @@ const TaskRunDetails = ({
 
   const [podContent, setPodContent] = useState();
   const hasEvents = pod?.events?.length > 0;
+
+  const podResource =
+    typeof pod?.resource === 'string' ? pod.resource : { ...pod?.resource };
+  if (podResource?.metadata?.managedFields) {
+    delete podResource.metadata.managedFields;
+  }
+  let podEvents;
+  if (hasEvents) {
+    podEvents = pod.events.map(event => {
+      const filteredEvent = { ...event };
+      delete filteredEvent.metadata?.managedFields;
+      return filteredEvent;
+    });
+  }
 
   useEffect(() => {
     setPodContent('resource');
@@ -124,23 +99,20 @@ const TaskRunDetails = ({
       })
     },
     {
-      key: 'description',
-      header: intl.formatMessage({
-        id: 'dashboard.resourceDetails.description',
-        defaultMessage: 'Description'
-      })
+      key: 'actions',
+      header: ''
     }
   ];
 
   const params = getParams(taskRun.spec);
   const paramsTable = params?.length ? (
     <Table
-      size="short"
+      size="sm"
       headers={headers}
       rows={params.map(({ name, value }) => ({
         id: name,
         name,
-        description: paramsDescriptions[name],
+        actions: <HelpIcon title={paramsDescriptions[name]} />,
         value: (
           <span title={value}>
             <Param>{value}</Param>
@@ -150,43 +122,15 @@ const TaskRunDetails = ({
     />
   ) : null;
 
-  const { namespace } = taskRun.metadata;
-  const { inputResources, outputResources } = getResources(taskRun.spec);
-
-  const resources = showIO && (inputResources || outputResources) && (
-    <>
-      {inputResources &&
-        resourceTable(
-          intl.formatMessage({
-            id: 'dashboard.stepDefinition.inputResources',
-            defaultMessage: 'Input resources'
-          }),
-          namespace,
-          inputResources,
-          intl
-        )}
-      {outputResources &&
-        resourceTable(
-          intl.formatMessage({
-            id: 'dashboard.stepDefinition.outputResources',
-            defaultMessage: 'Output resources'
-          }),
-          namespace,
-          outputResources,
-          intl
-        )}
-    </>
-  );
-
   const results = taskRun.status?.taskResults;
   const resultsTable = results?.length ? (
     <Table
-      size="short"
+      size="sm"
       headers={headers}
       rows={results.map(({ name, value }) => ({
         id: name,
         name,
-        description: resultsDescriptions[name],
+        actions: <HelpIcon title={resultsDescriptions[name]} />,
         value: (
           <span title={value}>
             <Param>{value}</Param>
@@ -199,7 +143,6 @@ const TaskRunDetails = ({
   const tabs = [
     paramsTable && 'params',
     resultsTable && 'results',
-    resources && 'resources',
     'status',
     pod && 'pod'
   ].filter(Boolean);
@@ -242,17 +185,6 @@ const TaskRunDetails = ({
             })}
           >
             <div className="tkn--step-status">{resultsTable}</div>
-          </Tab>
-        )}
-        {resources && (
-          <Tab
-            id={`${displayName}-resources`}
-            label={intl.formatMessage({
-              id: 'dashboard.taskRun.resources',
-              defaultMessage: 'Resources'
-            })}
-          >
-            <div className="tkn--step-status">{resources}</div>
           </Tab>
         )}
         <Tab
@@ -301,11 +233,11 @@ const TaskRunDetails = ({
                 <ViewYAML
                   dark
                   enableSyntaxHighlighting
-                  resource={pod.resource}
+                  resource={podResource}
                 />
               ) : null}
               {hasEvents && podContent === 'events' ? (
-                <ViewYAML dark enableSyntaxHighlighting resource={pod.events} />
+                <ViewYAML dark enableSyntaxHighlighting resource={podEvents} />
               ) : null}
             </div>
           </Tab>
@@ -318,15 +250,13 @@ const TaskRunDetails = ({
 TaskRunDetails.propTypes = {
   onViewChange: PropTypes.func,
   task: PropTypes.shape({}),
-  taskRun: PropTypes.shape({}),
-  showIO: PropTypes.bool
+  taskRun: PropTypes.shape({})
 };
 
 TaskRunDetails.defaultProps = {
   onViewChange: /* istanbul ignore next */ () => {},
   task: {},
-  taskRun: {},
-  showIO: false
+  taskRun: {}
 };
 
-export default injectIntl(TaskRunDetails);
+export default TaskRunDetails;

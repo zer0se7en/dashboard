@@ -1,12 +1,17 @@
+<!--
+---
+linkTitle: "Install"
+weight: 2
+---
+-->
+
 # Installing Tekton Dashboard
 
 This guide explains how to install Tekton Dashboard. It covers the following topics:
 
 - [Before you begin](#before-you-begin)
 - [Pre-requisites](#pre-requisites)
-- [Which version should I use](#which-version-should-i-use)
 - [Installing Tekton Dashboard on Kubernetes](#installing-tekton-dashboard-on-kubernetes)
-- [Installing Tekton Dashboard on OpenShift](#installing-tekton-dashboard-on-openshift)
 - [Installing with the installer script](#installing-with-the-installer-script)
 - [Accessing the Dashboard](#accessing-the-dashboard)
 - [Uninstalling the Dashboard on Kubernetes](#uninstalling-the-dashboard-on-kubernetes)
@@ -23,7 +28,7 @@ Choose the version of Tekton Dashboard you want to install. You have the followi
 ## Pre-requisites
 
 In order to install the Tekton Dashboard, please make sure the following requirements are met:
-- You must have a Kubernetes cluster running version 1.18.0 or later. Tekton Pipelines 
+- You must have a Kubernetes cluster running version 1.24.0 or later. Tekton Pipelines 
 or other projects may require a newer version.
 
   If you don't already have a cluster, you can create one for testing with `kind`.
@@ -34,25 +39,33 @@ or other projects may require a newer version.
 - Tekton Pipelines must be installed in the cluster. See [Installing Tekton Pipelines](https://github.com/tektoncd/pipeline/blob/main/docs/install.md).
 - Optionally, install Tekton Triggers. See [Installing Tekton Triggers](https://github.com/tektoncd/triggers/blob/main/docs/install.md).
 
-## Which version should I use
+### Supported Tekton Pipelines and Tekton Triggers versions
 
-Every Tekton Dashboard version is meant to support specific Tekton Pipelines and Tekton Triggers versions.
-See the [docs on the main page](../README.md) to find the Tekton Dashboard version that suits your needs.
-
-Pay attention to annoucements like **deprecated versions** and/or **security related recommendations** when choosing the version you want to install.
+Each Tekton Dashboard release is tested against specific Tekton Pipelines and Tekton Triggers versions. See the Tekton Dashboard release notes for details of the supported versions.
 
 ## Installing Tekton Dashboard on Kubernetes
 
 To install Tekton Dashboard on a Kubernetes cluster:
 
-1. Run the following command to install Tekton Dashboard and its dependencies:
+1. Run the following command to install Tekton Dashboard:
 
    ```bash
-   kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/tekton-dashboard-release.yaml
+   kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
    ```
 
+   This will install the Dashboard in read-only mode by default.
+
    Previous versions are available at `previous/$VERSION_NUMBER/*.yaml`, e.g.
-   https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.12.0/tekton-dashboard-release.yaml
+   https://storage.googleapis.com/tekton-releases/dashboard/previous/v0.32.0/release.yaml
+
+   To install in read/write mode, use release-full.yaml.
+
+   v0.31.0 and earlier used a different naming scheme for the release manifests:
+
+   | Mode | Current | v0.31.0 and earlier |
+   |------|---------|---------------------|
+   | read-only | release.yaml | tekton-dashboard-release-readonly.yaml |
+   | read/write | release-full.yaml | tekton-dashboard-release.yaml |
 
 1. Monitor the installation using the following command until all components show a `Running` status:
 
@@ -64,42 +77,24 @@ To install Tekton Dashboard on a Kubernetes cluster:
 
 Congratulations! You have successfully installed Tekton Dashboard on your Kubernetes cluster.
 
-## Installing Tekton Dashboard on OpenShift
-
-To install Tekton Dashboard on an OpenShift cluster:
-
-1. Install the Openshift Pipeline Operator from the operator hub.
-
-1. Assuming you want to install the Dashboard into the `openshift-pipelines` namespace, which is the default one:
-
-   ```bash
-   kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/openshift-tekton-dashboard-release.yaml --validate=false
-   ```
-
-Congratulations! You have successfully installed Tekton Dashboard on your OpenShift cluster.
-
-**Note for users installing Tekton Pipelines and Triggers outside the OpenShift Pipelines operator:**
-
-Tekton Dashboard on OpenShift works out of the box with the OpenShift Pipelines operator. If you installed Tekton Pipelines and Triggers without using the OpenShift Pipelines operator, you will need to change the following args `--pipelines-namespace=openshift-pipelines` and `--triggers-namespace=openshift-pipelines` and set their values to the namespace where Pipelines and Triggers were respectively deployed.
-
 ## Installing with the installer script
 
 `v0.8.0` and later releases provide an installer script to simplify deploying the Tekton Dashboard with custom options.
 
 You can refer to the dev docs for more info on [how to use the installer](./dev/installer.md).
 
-For example, to install the latest release in read only mode:
+For example, to install the latest release in read/write mode:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/tektoncd/dashboard/main/scripts/release-installer | \
-   bash -s -- install latest --read-only
+   bash -s -- install latest --read-write
 ```
 
 ## Accessing the Dashboard
 
 By default, the Dashboard is not exposed outside the cluster.
 
-There are several solutions to access the Dashboard UI depending on your setup described below.
+There are several solutions described below for accessing the Dashboard UI depending on your setup.
 
 ### Using kubectl proxy
 
@@ -217,19 +212,17 @@ If you're using one of these proxies to provide authentication but still want to
 The Dashboard can be uninstalled by running the following command:
 
 ```bash
-kubectl delete --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/tekton-dashboard-release.yaml
+kubectl delete --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
 ```
 
-The above command assumes that the latest version was installed, refer to [Installing Tekton Dashboard on Kubernetes](#installing-tekton-dashboard-on-kubernetes) to find the correct `--filename` argument if another version was installed.
+The above command assumes that the current latest version was installed, refer to [Installing Tekton Dashboard on Kubernetes](#installing-tekton-dashboard-on-kubernetes) to find the correct `--filename` argument if another version was installed.
 
 ## Next steps
 
-To get started with Tekton Dashboard, see the [Tekton Dashboard katacoda tutorial](https://katacoda.com/tektoncd/scenarios/dashboard).
+To get started with Tekton Dashboard, see the [tutorial](./tutorial.md).
 
 To add more functionality to your Tekton Dashboard, see the [Tekton Dashboard extensions](./extensions.md)
 
 ---
 
-Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/).
-
-Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/). Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).

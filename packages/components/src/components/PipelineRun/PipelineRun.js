@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -32,6 +32,24 @@ import {
   TaskTree
 } from '..';
 
+function getPipelineTaskName({ pipelineRun, taskRunName }) {
+  const {
+    status: { childReferences, taskRuns }
+  } = pipelineRun;
+
+  if (taskRuns) {
+    return taskRuns[taskRunName]?.pipelineTaskName;
+  }
+
+  if (childReferences) {
+    const { pipelineTaskName } =
+      childReferences.find(({ name }) => name === taskRunName) || {};
+    return pipelineTaskName;
+  }
+
+  return undefined;
+}
+
 export /* istanbul ignore next */ class PipelineRunContainer extends Component {
   state = {
     isLogsMaximized: false
@@ -40,16 +58,20 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
   getPipelineRunError = () => {
     const { pipelineRun } = this.props;
 
-    if (!(pipelineRun.status && pipelineRun.status.taskRuns)) {
+    if (!pipelineRun.status?.taskRuns && !pipelineRun.status?.childReferences) {
       return null;
     }
 
     const {
-      status: { taskRuns: taskRunsStatus }
+      status: { childReferences, taskRuns: taskRunsStatus }
     } = pipelineRun;
     const { message, status, reason } = getStatus(pipelineRun);
 
-    return status === 'False' && !taskRunsStatus && { message, reason };
+    return (
+      status === 'False' &&
+      !taskRunsStatus &&
+      !childReferences && { message, reason }
+    );
   };
 
   getLogContainer({ stepName, stepStatus, taskRun }) {
@@ -111,7 +133,10 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
 
   loadTaskRuns = () => {
     const { intl, pipelineRun } = this.props;
-    if (!pipelineRun?.status?.taskRuns) {
+    if (
+      !pipelineRun?.status?.taskRuns &&
+      !pipelineRun?.status?.childReferences
+    ) {
       return [];
     }
 
@@ -135,20 +160,13 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
       return acc;
     }, []);
 
-    const {
-      status: { taskRuns: taskRunDetails }
-    } = pipelineRun;
-
     return taskRuns.map(taskRun => {
-      const { labels, name: taskRunName, uid } = taskRun.metadata;
+      const { name: taskRunName, uid } = taskRun.metadata;
 
-      let pipelineTaskName;
-      const conditionCheck = labels[labelConstants.CONDITION_CHECK];
-      if (conditionCheck) {
-        pipelineTaskName = conditionCheck;
-      } else {
-        ({ pipelineTaskName } = taskRunDetails[taskRunName] || {});
-      }
+      let pipelineTaskName = getPipelineTaskName({
+        pipelineRun,
+        taskRunName
+      });
 
       const { podName } = taskRun.status || {};
 
@@ -186,15 +204,15 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
       customNotification,
       error,
       handleTaskSelected,
+      icon,
       intl,
       loading,
       onViewChange,
       pipelineRun,
       pod,
-      runaction,
+      runActions,
       selectedStepId,
       selectedTaskId,
-      showIO,
       triggerHeader,
       view
     } = this.props;
@@ -242,7 +260,8 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
       );
     }
 
-    const pipelineRunName = pipelineRun.metadata.name;
+    const pipelineRunName =
+      pipelineRun.metadata.name || pipelineRun.metadata.generateName;
     const pipelineRunError = this.getPipelineRunError();
 
     const {
@@ -256,6 +275,7 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
       return (
         <>
           <RunHeader
+            icon={icon}
             lastTransitionTime={lastTransitionTime}
             loading={loading}
             pipelineRun={pipelineRun}
@@ -313,6 +333,7 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
     return (
       <>
         <RunHeader
+          icon={icon}
           lastTransitionTime={lastTransitionTime}
           loading={loading}
           message={pipelineRunStatusMessage}
@@ -321,7 +342,7 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
           status={pipelineRunStatus}
           triggerHeader={triggerHeader}
         >
-          {runaction}
+          {runActions}
         </RunHeader>
         {customNotification}
         {taskRuns.length > 0 && (
@@ -350,7 +371,6 @@ export /* istanbul ignore next */ class PipelineRunContainer extends Component {
                   task={task}
                   taskRun={taskRun}
                   view={view}
-                  showIO={showIO}
                 />
               ))}
           </div>

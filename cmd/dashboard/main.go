@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -32,7 +32,7 @@ var (
 	triggersNamespace  = flag.String("triggers-namespace", "", "Namespace where Tekton triggers is installed (assumes same namespace as dashboard if not specified)")
 	kubeConfigPath     = flag.String("kube-config", "", "Path to kube config file")
 	portNumber         = flag.Int("port", 8080, "Dashboard port number")
-	readOnly           = flag.Bool("read-only", false, "Enable or disable read only mode")
+	readOnly           = flag.Bool("read-only", true, "Enable or disable read-only mode")
 	logoutURL          = flag.String("logout-url", "", "If set, enables logout on the frontend and binds the logout button to this url")
 	tenantNamespace    = flag.String("namespace", "", "If set, limits the scope of resources watched to this namespace only")
 	logLevel           = flag.String("log-level", "info", "Minimum log level output by the logger")
@@ -109,6 +109,7 @@ func main() {
 		return
 	}
 
+	logging.Log.Infof("Tekton Dashboard version %s", resource.GetDashboardVersion())
 	logging.Log.Infof("Starting to serve on %s", l.Addr().String())
-	server.ServeOnListener(l)
+	logging.Log.Fatal(server.ServeOnListener(l))
 }

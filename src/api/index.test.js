@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,15 +11,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import fetchMock from 'fetch-mock';
 import { renderHook } from '@testing-library/react-hooks';
 import { labels } from '@tektoncd/dashboard-utils';
 
 import { getAPIWrapper, getQueryClient } from '../utils/test';
+import { rest, server } from '../../config_frontend/msw';
 
 import * as API from '.';
 import * as ClusterTasksAPI from './clusterTasks';
 import * as TasksAPI from './tasks';
+import * as comms from './comms';
 import * as utils from './utils';
 
 it('getCustomResource', () => {
@@ -29,11 +30,12 @@ it('getCustomResource', () => {
   const name = 'testresource';
   const namespace = 'testnamespace';
   const data = { fake: 'resourcedata' };
-  fetchMock.get(`end:${name}`, data);
+  server.use(
+    rest.get(new RegExp(`/${name}$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getCustomResource({ group, version, type, namespace, name }).then(
     resource => {
       expect(resource).toEqual(data);
-      fetchMock.restore();
     }
   );
 });
@@ -44,11 +46,12 @@ it('getCustomResources', () => {
   const type = 'testtype';
   const namespace = 'testnamespace';
   const data = { items: 'resourcedata' };
-  fetchMock.get(`end:${type}/`, data);
+  server.use(
+    rest.get(new RegExp(`/${type}/$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getCustomResources({ group, version, type, namespace }).then(
     resources => {
       expect(resources).toEqual(data);
-      fetchMock.restore();
     }
   );
 });
@@ -81,7 +84,9 @@ it('useCustomResources', async () => {
       { metadata: { name: 'resource2' } }
     ]
   };
-  fetchMock.get(/fake_type/, resources);
+  server.use(
+    rest.get(/\/fake_type\//, (req, res, ctx) => res(ctx.json(resources)))
+  );
   const { result, waitFor } = renderHook(
     () => API.useCustomResources({ group, type, version }),
     {
@@ -91,7 +96,6 @@ it('useCustomResources', async () => {
   await waitFor(() => result.current.isFetching);
   await waitFor(() => !result.current.isFetching);
   expect(result.current.data).toEqual(resources.items);
-  fetchMock.restore();
 });
 
 it('useAPIResource', () => {
@@ -106,8 +110,7 @@ it('useAPIResource', () => {
       api: API.getAPIResource,
       kind: type,
       params
-    }),
-    { disableWebSocket: true }
+    })
   );
   expect(returnValue).toEqual(query);
 });
@@ -151,10 +154,11 @@ it('getNamespaces returns the correct data', () => {
   const data = {
     items: 'namespaces'
   };
-  fetchMock.get(/namespaces/, data);
+  server.use(
+    rest.get(/\/namespaces\//, (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getNamespaces().then(response => {
     expect(response).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -166,14 +170,15 @@ it('useNamespaces', async () => {
       { metadata: { name: 'namespace2' } }
     ]
   };
-  fetchMock.get(/namespaces/, namespaces);
+  server.use(
+    rest.get(/\/namespaces\//, (req, res, ctx) => res(ctx.json(namespaces)))
+  );
   const { result, waitFor } = renderHook(() => API.useNamespaces(), {
     wrapper: getAPIWrapper()
   });
   await waitFor(() => result.current.isFetching);
   await waitFor(() => !result.current.isFetching);
   expect(result.current.data).toEqual(namespaces.items);
-  fetchMock.restore();
 });
 
 it('usePod', async () => {
@@ -183,7 +188,7 @@ it('usePod', async () => {
     metadata: {},
     spec: 'fake_spec'
   };
-  fetchMock.get(/pods/, pod);
+  server.use(rest.get(/\/pods\//, (req, res, ctx) => res(ctx.json(pod))));
   const { result, waitFor } = renderHook(
     () => API.usePod({ name, namespace }),
     {
@@ -193,7 +198,6 @@ it('usePod', async () => {
   await waitFor(() => result.current.isFetching);
   await waitFor(() => !result.current.isFetching);
   expect(result.current.data).toEqual(pod);
-  fetchMock.restore();
 });
 
 it('useEvents', async () => {
@@ -204,7 +208,7 @@ it('useEvents', async () => {
     metadata: {},
     items: [{ metadata: { name: 'event1' } }, { metadata: { name: 'event2' } }]
   };
-  fetchMock.get(/events/, events);
+  server.use(rest.get(/\/events\//, (req, res, ctx) => res(ctx.json(events))));
   const { result, waitFor } = renderHook(
     () => API.useEvents({ involvedObjectKind, involvedObjectName, namespace }),
     {
@@ -214,10 +218,55 @@ it('useEvents', async () => {
   await waitFor(() => result.current.isFetching);
   await waitFor(() => !result.current.isFetching);
   expect(result.current.data).toEqual(events.items);
-  fetchMock.restore();
 });
 
 it('getExternalLogURL', () => {
+  const container = 'fake_container';
+  const externalLogsURL = 'fake_externalLogsURL';
+  const namespace = 'fake_namespace';
+  const podName = 'fake_podName';
+  const startTime = '2000-01-02T03:04:05Z';
+  const completionTime = '2006-07-08T09:10:11Z';
+  expect(
+    API.getExternalLogURL({
+      completionTime,
+      container,
+      externalLogsURL,
+      namespace,
+      podName,
+      startTime
+    })
+  ).toEqual(
+    `${externalLogsURL}/${namespace}/${podName}/${container}?startTime=${startTime.replaceAll(
+      ':',
+      '%3A'
+    )}&completionTime=${completionTime.replaceAll(':', '%3A')}`
+  );
+});
+
+it('getExternalLogURL with empty completionTime', () => {
+  const container = 'fake_container';
+  const externalLogsURL = 'fake_externalLogsURL';
+  const namespace = 'fake_namespace';
+  const podName = 'fake_podName';
+  const startTime = '2000-01-02T03:04:05Z';
+  expect(
+    API.getExternalLogURL({
+      container,
+      externalLogsURL,
+      namespace,
+      podName,
+      startTime
+    })
+  ).toEqual(
+    `${externalLogsURL}/${namespace}/${podName}/${container}?startTime=${startTime.replaceAll(
+      ':',
+      '%3A'
+    )}`
+  );
+});
+
+it('getExternalLogURL with empty startTime and completionTime', () => {
   const container = 'fake_container';
   const externalLogsURL = 'fake_externalLogsURL';
   const namespace = 'fake_namespace';
@@ -231,17 +280,13 @@ it('getPodLog', () => {
   const namespace = 'default';
   const name = 'foo';
   const data = 'logs';
-  const responseConfig = {
-    body: data,
-    status: 200,
-    headers: { 'Content-Type': 'text/plain' }
-  };
-  fetchMock.get(`end:${name}/log`, responseConfig, {
-    sendAsJson: false
-  });
+  server.use(
+    rest.get(new RegExp(`/${name}/log$`), (req, res, ctx) =>
+      res(ctx.text(data))
+    )
+  );
   return API.getPodLog({ name, namespace }).then(log => {
     expect(log).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -250,326 +295,136 @@ it('getPodLog with container name', () => {
   const name = 'foo';
   const container = 'containerName';
   const data = 'logs';
-  const responseConfig = {
-    body: data,
-    status: 200,
-    headers: { 'Content-Type': 'text/plain' }
-  };
-  fetchMock.get(`end:${name}/log?container=${container}`, responseConfig, {
-    sendAsJson: false
-  });
+  server.use(
+    rest.get(new RegExp(`/${name}/log$`), async (req, res, ctx) =>
+      req.url.searchParams.get('container') === container
+        ? res(await ctx.text(data))
+        : res(ctx.json(404))
+    )
+  );
   return API.getPodLog({ container, name, namespace }).then(log => {
     expect(log).toEqual(data);
-    fetchMock.restore();
   });
 });
 
-it('importResources', () => {
-  const mockDateNow = jest
-    .spyOn(Date, 'now')
-    .mockImplementation(() => 'fake-timestamp');
-  const importerNamespace = 'fake-importer-namespace';
-  const method = 'apply';
-  const namespace = 'fake-namespace';
-  const path = 'fake-directory';
-  const repositoryURL = 'https://github.com/test/testing';
-  const serviceAccount = 'fake-serviceAccount';
+describe('importResources', () => {
+  it('basic', () => {
+    const mockDateNow = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => 'fake-timestamp');
+    const importerNamespace = 'fake-importer-namespace';
+    const method = 'apply';
+    const namespace = 'fake-namespace';
+    const path = 'fake-directory';
+    const repositoryURL = 'https://github.com/test/testing';
+    const serviceAccount = 'fake-serviceAccount';
 
-  const payload = {
-    importerNamespace,
-    method,
-    namespace,
-    path,
-    repositoryURL,
-    serviceAccount
-  };
-  const data = {
-    apiVersion: 'tekton.dev/v1beta1',
-    kind: 'PipelineRun',
-    metadata: {
-      name: `import-resources-${Date.now()}`,
-      labels: {
-        app: 'tekton-app',
-        [labels.DASHBOARD_IMPORT]: 'true'
-      }
-    },
-    spec: {
-      params: [
-        {
-          name: 'path',
-          value: 'fake-directory'
-        },
-        {
-          name: 'target-namespace',
-          value: 'fake-namespace'
-        }
-      ],
-      pipelineSpec: {
-        params: [
-          {
-            default: '.',
-            description: 'The path from which resources are to be imported',
-            name: 'path',
-            type: 'string'
-          },
-          {
-            default: 'tekton-pipelines',
-            description:
-              'The namespace in which to create the resources being imported',
-            name: 'target-namespace',
-            type: 'string'
-          }
-        ],
-        resources: [
-          {
-            name: 'git-source',
-            type: 'git'
-          }
-        ],
-        tasks: [
-          {
-            name: 'import-resources',
-            params: [
-              {
-                name: 'path',
-                value: '$(params.path)'
-              },
-              {
-                name: 'target-namespace',
-                value: '$(params.target-namespace)'
-              }
-            ],
-            resources: {
-              inputs: [
-                {
-                  name: 'git-source',
-                  resource: 'git-source'
-                }
-              ]
-            },
-            taskSpec: {
-              params: [
-                {
-                  default: '.',
-                  description:
-                    'The path from which resources are to be imported',
-                  name: 'path',
-                  type: 'string'
-                },
-                {
-                  default: 'tekton-pipelines',
-                  description:
-                    'The namespace in which to create the resources being imported',
-                  name: 'target-namespace',
-                  type: 'string'
-                }
-              ],
-              resources: {
-                inputs: [
-                  {
-                    name: 'git-source',
-                    type: 'git'
-                  }
-                ]
-              },
-              steps: [
-                {
-                  args: [
-                    method,
-                    '-f',
-                    '$(resources.inputs.git-source.path)/$(params.path)',
-                    '-n',
-                    '$(params.target-namespace)'
-                  ],
-                  command: ['kubectl'],
-                  image: 'lachlanevenson/k8s-kubectl:latest',
-                  name: 'import'
-                }
-              ]
+    const payload = {
+      importerNamespace,
+      method,
+      namespace,
+      path,
+      repositoryURL,
+      serviceAccount
+    };
+
+    const fakeAPI = 'fake_api';
+    jest.spyOn(utils, 'getTektonAPI').mockImplementation(() => fakeAPI);
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+    return API.importResources(payload).then(() => {
+      expect(comms.post).toHaveBeenCalledWith(
+        fakeAPI,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            name: 'import-resources-fake-timestamp',
+            labels: {
+              [labels.DASHBOARD_IMPORT]: 'true'
             }
-          }
-        ]
-      },
-      resources: [
-        {
-          name: 'git-source',
-          resourceSpec: {
-            params: [
+          }),
+          spec: expect.objectContaining({
+            params: expect.arrayContaining([
+              { name: 'method', value: method },
+              { name: 'path', value: path },
+              { name: 'repositoryURL', value: repositoryURL },
+              { name: 'revision', value: undefined },
+              { name: 'target-namespace', value: namespace }
+            ]),
+            taskRunSpecs: [
               {
-                name: 'url',
-                value: 'https://github.com/test/testing'
+                pipelineTaskName: 'fetch-repo',
+                taskServiceAccountName: serviceAccount
+              },
+              {
+                pipelineTaskName: 'import-resources',
+                taskServiceAccountName: serviceAccount
               }
-            ],
-            type: 'git'
-          }
-        }
-      ],
-      serviceAccountName: serviceAccount
-    }
-  };
-
-  fetchMock.post('*', { body: data, status: 201 });
-  return API.importResources(payload).then(response => {
-    expect(response).toEqual(data);
-    expect(JSON.parse(fetchMock.lastOptions().body)).toMatchObject(data);
-    fetchMock.restore();
-    mockDateNow.mockRestore();
+            ]
+          })
+        })
+      );
+      mockDateNow.mockRestore();
+    });
   });
-});
 
-it('importResources with revision and no serviceAccount', () => {
-  const mockDateNow = jest
-    .spyOn(Date, 'now')
-    .mockImplementation(() => 'fake-timestamp');
-  const importerNamespace = 'fake-importer-namespace';
-  const method = 'apply';
-  const namespace = 'fake-namespace';
-  const path = 'fake-directory';
-  const repositoryURL = 'https://github.com/test/testing';
-  const revision = 'some_git_revision';
+  it('with revision and no serviceAccount', () => {
+    const mockDateNow = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => 'fake-timestamp');
+    const importerNamespace = 'fake-importer-namespace';
+    const method = 'apply';
+    const namespace = 'fake-namespace';
+    const path = 'fake-directory';
+    const repositoryURL = 'https://github.com/test/testing';
+    const revision = 'some_git_revision';
 
-  const payload = {
-    importerNamespace,
-    method,
-    namespace,
-    path,
-    repositoryURL,
-    revision
-  };
-  const data = {
-    apiVersion: 'tekton.dev/v1beta1',
-    kind: 'PipelineRun',
-    metadata: {
-      name: `import-resources-${Date.now()}`,
-      labels: {
-        app: 'tekton-app',
-        [labels.DASHBOARD_IMPORT]: 'true'
-      }
-    },
-    spec: {
-      params: [
-        {
-          name: 'path',
-          value: 'fake-directory'
-        },
-        {
-          name: 'target-namespace',
-          value: 'fake-namespace'
-        }
-      ],
-      pipelineSpec: {
-        params: [
-          {
-            default: '.',
-            description: 'The path from which resources are to be imported',
-            name: 'path',
-            type: 'string'
-          },
-          {
-            default: 'tekton-pipelines',
-            description:
-              'The namespace in which to create the resources being imported',
-            name: 'target-namespace',
-            type: 'string'
-          }
-        ],
-        resources: [
-          {
-            name: 'git-source',
-            type: 'git'
-          }
-        ],
-        tasks: [
-          {
-            name: 'import-resources',
-            params: [
-              {
-                name: 'path',
-                value: '$(params.path)'
-              },
-              {
-                name: 'target-namespace',
-                value: '$(params.target-namespace)'
-              }
-            ],
-            resources: {
-              inputs: [
-                {
-                  name: 'git-source',
-                  resource: 'git-source'
-                }
-              ]
-            },
-            taskSpec: {
-              params: [
-                {
-                  default: '.',
-                  description:
-                    'The path from which resources are to be imported',
-                  name: 'path',
-                  type: 'string'
-                },
-                {
-                  default: 'tekton-pipelines',
-                  description:
-                    'The namespace in which to create the resources being imported',
-                  name: 'target-namespace',
-                  type: 'string'
-                }
-              ],
-              resources: {
-                inputs: [
-                  {
-                    name: 'git-source',
-                    type: 'git'
-                  }
-                ]
-              },
-              steps: [
-                {
-                  args: [
-                    method,
-                    '-f',
-                    '$(resources.inputs.git-source.path)/$(params.path)',
-                    '-n',
-                    '$(params.target-namespace)'
-                  ],
-                  command: ['kubectl'],
-                  image: 'lachlanevenson/k8s-kubectl:latest',
-                  name: 'import'
-                }
-              ]
+    const payload = {
+      importerNamespace,
+      method,
+      namespace,
+      path,
+      repositoryURL,
+      revision
+    };
+
+    const fakeAPI = 'fake_api';
+    jest.spyOn(utils, 'getTektonAPI').mockImplementation(() => fakeAPI);
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+
+    return API.importResources(payload).then(() => {
+      expect(comms.post).toHaveBeenCalledWith(
+        fakeAPI,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            name: 'import-resources-fake-timestamp',
+            labels: {
+              [labels.DASHBOARD_IMPORT]: 'true'
             }
-          }
-        ]
-      },
-      resources: [
-        {
-          name: 'git-source',
-          resourceSpec: {
-            params: [
-              {
-                name: 'url',
-                value: 'https://github.com/test/testing'
-              },
-              {
-                name: 'revision',
-                value: revision
-              }
-            ],
-            type: 'git'
-          }
-        }
-      ]
-    }
-  };
-
-  fetchMock.post('*', { body: data, status: 201 });
-  return API.importResources(payload).then(response => {
-    expect(response).toEqual(data);
-    expect(JSON.parse(fetchMock.lastOptions().body)).toMatchObject(data);
-    fetchMock.restore();
-    mockDateNow.mockRestore();
+          }),
+          spec: expect.objectContaining({
+            params: expect.arrayContaining([
+              { name: 'method', value: method },
+              { name: 'path', value: path },
+              { name: 'repositoryURL', value: repositoryURL },
+              { name: 'revision', value: revision },
+              { name: 'target-namespace', value: namespace }
+            ])
+          })
+        })
+      );
+      expect(comms.post).not.toHaveBeenCalledWith(
+        fakeAPI,
+        expect.objectContaining({
+          spec: expect.objectContaining({
+            serviceAccountName: expect.any(String)
+          })
+        })
+      );
+      mockDateNow.mockRestore();
+    });
   });
 });
 
@@ -580,10 +435,13 @@ describe('getAPIResource', () => {
     const type = 'testtype';
     const apiResource = { name: type };
     const data = { resources: [apiResource] };
-    fetchMock.get(`end:/apis/${group}/${version}`, data);
+    server.use(
+      rest.get(new RegExp(`/apis/${group}/${version}$`), (req, res, ctx) =>
+        res(ctx.json(data))
+      )
+    );
     return API.getAPIResource({ group, version, type }).then(resource => {
       expect(resource).toEqual(apiResource);
-      fetchMock.restore();
     });
   });
 
@@ -593,10 +451,28 @@ describe('getAPIResource', () => {
     const type = 'testtype';
     const apiResource = { name: type };
     const data = { resources: [apiResource] };
-    fetchMock.get(`end:/api/${version}`, data);
+    server.use(
+      rest.get(new RegExp(`/api/${version}$`), (req, res, ctx) =>
+        res(ctx.json(data))
+      )
+    );
     return API.getAPIResource({ group, version, type }).then(resource => {
       expect(resource).toEqual(apiResource);
-      fetchMock.restore();
+    });
+  });
+
+  it('handles empty resources response', () => {
+    const group = 'core';
+    const version = 'testversion';
+    const type = 'testtype';
+    const data = { resources: [] };
+    server.use(
+      rest.get(new RegExp(`/api/${version}$`), (req, res, ctx) =>
+        res(ctx.json(data))
+      )
+    );
+    return API.getAPIResource({ group, version, type }).then(resource => {
+      expect(resource).toEqual({});
     });
   });
 });
@@ -604,42 +480,41 @@ describe('getAPIResource', () => {
 describe('getInstallProperties', () => {
   it('returns expected data', async () => {
     const data = { fake: 'properties' };
-    fetchMock.get(/properties/, data);
+    server.use(
+      rest.get(/\/properties$/, (req, res, ctx) => res(ctx.json(data)))
+    );
     const properties = await API.getInstallProperties();
     expect(properties).toEqual(data);
-    fetchMock.restore();
   });
 
   it('handles error in case of Dashboard client mode', async () => {
-    const error = new Error();
-    error.response = {
-      status: 404
-    };
-    fetchMock.get(/properties/, { throws: error });
+    server.use(
+      rest.get(/\/properties$/, (req, res, ctx) => res(ctx.status(404)))
+    );
     const properties = await API.getInstallProperties();
     expect(properties.dashboardVersion).toEqual('kubectl-proxy-client');
-    fetchMock.restore();
   });
 
   it('handles unexpected errors', async () => {
-    const error = new Error();
-    fetchMock.get(/properties/, { throws: error });
+    server.use(
+      rest.get(/\/properties$/, (req, res, ctx) => res(ctx.status(500)))
+    );
     const properties = await API.getInstallProperties();
     expect(properties).toBeUndefined();
-    fetchMock.restore();
   });
 });
 
 it('useProperties', async () => {
   const properties = { fake: 'properties' };
-  fetchMock.get(/properties/, properties);
+  server.use(
+    rest.get(/\/properties$/, (req, res, ctx) => res(ctx.json(properties)))
+  );
   const { result, waitFor } = renderHook(() => API.useProperties(), {
     wrapper: getAPIWrapper()
   });
   await waitFor(() => result.current.isFetching);
   await waitFor(() => !result.current.isFetching);
   expect(result.current.data).toEqual(properties);
-  fetchMock.restore();
 });
 
 it('other hooks that depend on useProperties', async () => {
@@ -664,7 +539,9 @@ it('other hooks that depend on useProperties', async () => {
     triggersNamespace,
     triggersVersion
   };
-  fetchMock.get(/properties/, properties);
+  server.use(
+    rest.get(/\/properties$/, (req, res, ctx) => res(ctx.json(properties)))
+  );
   const { result, waitFor } = renderHook(() => API.useProperties(), {
     wrapper: getAPIWrapper({ queryClient })
   });
@@ -721,6 +598,4 @@ it('other hooks that depend on useProperties', async () => {
     }
   );
   expect(isTriggersInstalledResult.current).toEqual(true);
-
-  fetchMock.restore();
 });

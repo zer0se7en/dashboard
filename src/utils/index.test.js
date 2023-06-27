@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -25,6 +25,7 @@ import {
   getTheme,
   getViewChangeHandler,
   setTheme,
+  sortRunsByCreationTime,
   sortRunsByStartTime
 } from '.';
 
@@ -56,6 +57,36 @@ describe('sortRunsByStartTime', () => {
     const runs = [a, b];
     const sortedRuns = [a, b];
     sortRunsByStartTime(runs);
+    expect(runs).toEqual(sortedRuns);
+  });
+});
+
+describe('sortRunsByCreationTime', () => {
+  it('should handle missing creation time or metadata', () => {
+    const a = { name: 'a', metadata: { creationTimestamp: '0' } };
+    const b = { name: 'b', metadata: {} };
+    const c = { name: 'c', metadata: { creationTimestamp: '2' } };
+    const d = { name: 'd', metadata: { creationTimestamp: '1' } };
+    const e = { name: 'e', metadata: {} };
+    const f = { name: 'f', metadata: { creationTimestamp: '3' } };
+    const g = { name: 'g' };
+
+    const runs = [a, b, c, d, e, f, g];
+    /*
+      sort is stable on all modern browsers so
+      input order is preserved for b and e
+     */
+    const sortedRuns = [b, e, g, f, c, d, a];
+    sortRunsByCreationTime(runs);
+    expect(runs).toEqual(sortedRuns);
+  });
+
+  it('should leave the order unchanged if no creationTimestamps specified', () => {
+    const a = { name: 'a' };
+    const b = { name: 'b' };
+    const runs = [a, b];
+    const sortedRuns = [a, b];
+    sortRunsByCreationTime(runs);
     expect(runs).toEqual(sortedRuns);
   });
 });
@@ -109,9 +140,35 @@ describe('fetchLogsFallback', () => {
     const namespace = 'fake_namespace';
     const podName = 'fake_podName';
     const stepName = 'fake_stepName';
+    const startTime = '2000-01-02T03:04:05Z';
+    const completionTime = '2006-07-08T09:10:11Z';
+    const stepStatus = { container };
+    const taskRun = {
+      metadata: { namespace },
+      status: { podName, startTime, completionTime }
+    };
+    jest.spyOn(comms, 'get').mockImplementation(() => {});
+
+    const fallback = fetchLogsFallback(externalLogsURL);
+    fallback(stepName, stepStatus, taskRun);
+    expect(comms.get).toHaveBeenCalledWith(
+      `${externalLogsURL}/${namespace}/${podName}/${container}?startTime=${startTime.replaceAll(
+        ':',
+        '%3A'
+      )}&completionTime=${completionTime.replaceAll(':', '%3A')}`,
+      { Accept: 'text/plain' }
+    );
+  });
+
+  it('should handle a missing startTime and completionTime', () => {
+    const container = 'fake_container';
+    const externalLogsURL = 'fake_url';
+    const namespace = 'fake_namespace';
+    const podName = 'fake_podName';
+    const stepName = 'fake_stepName';
     const stepStatus = { container };
     const taskRun = { metadata: { namespace }, status: { podName } };
-    jest.spyOn(comms, 'get');
+    jest.spyOn(comms, 'get').mockImplementation(() => {});
 
     const fallback = fetchLogsFallback(externalLogsURL);
     fallback(stepName, stepStatus, taskRun);
@@ -180,7 +237,7 @@ describe('getLogsRetriever', () => {
   const taskRun = { metadata: { namespace }, status: { podName } };
 
   it('should handle default logs retriever', () => {
-    jest.spyOn(API, 'getPodLog');
+    jest.spyOn(API, 'getPodLog').mockImplementation(() => {});
     const logsRetriever = getLogsRetriever({});
     expect(logsRetriever).toBeDefined();
     logsRetriever(stepName, stepStatus, taskRun);
@@ -193,7 +250,7 @@ describe('getLogsRetriever', () => {
 
   it('should handle default logs retriever with external fallback enabled', async () => {
     const externalLogsURL = 'fake_externalLogsURL';
-    jest.spyOn(API, 'getPodLog');
+    jest.spyOn(API, 'getPodLog').mockImplementation(() => {});
     const onFallback = jest.fn();
     const logsRetriever = getLogsRetriever({ externalLogsURL, onFallback });
     expect(logsRetriever).toBeDefined();
@@ -212,6 +269,7 @@ describe('getLogsRetriever', () => {
     jest.spyOn(API, 'getPodLog').mockImplementation(() => {
       throw new Error();
     });
+    jest.spyOn(comms, 'get').mockImplementation(() => {});
     const onFallback = jest.fn();
     const logsRetriever = getLogsRetriever({ externalLogsURL, onFallback });
     expect(logsRetriever).toBeDefined();
@@ -228,12 +286,12 @@ describe('getLogsRetriever', () => {
 
 it('getViewChangeHandler', () => {
   const url = 'someURL';
-  const history = { push: jest.fn() };
+  const navigate = jest.fn();
   const location = { pathname: url, search: '?nonViewQueryParam=someValue' };
-  const handleViewChange = getViewChangeHandler({ history, location });
+  const handleViewChange = getViewChangeHandler({ location, navigate });
   const view = 'someView';
   handleViewChange(view);
-  expect(history.push).toHaveBeenCalledWith(
+  expect(navigate).toHaveBeenCalledWith(
     `${url}?nonViewQueryParam=someValue&view=${view}`
   );
 });

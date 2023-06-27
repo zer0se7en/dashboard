@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,11 +12,10 @@ limitations under the License.
 */
 
 import React from 'react';
-import { QueryClient, QueryClientProvider } from 'react-query';
-import { ALL_NAMESPACES } from '@tektoncd/dashboard-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Table } from '@tektoncd/dashboard-components';
 
 import ListPageLayoutContainer from './ListPageLayout';
-import { NamespaceContext } from '../../api/utils';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,48 +35,58 @@ const namespaces = [
   'tekton-pipelines'
 ].map(namespace => ({ metadata: { name: namespace } }));
 
-const namespaceContext = {
-  selectedNamespace: ALL_NAMESPACES,
-  selectNamespace: () => {}
-};
-
 export default {
+  args: {
+    hideNamespacesDropdown: false,
+    title: 'PipelineRuns'
+  },
   component: ListPageLayoutContainer,
   decorators: [
     Story => {
-      queryClient.setQueryData('Namespace', () => ({
+      queryClient.setQueryData(['Namespace'], () => ({
         items: namespaces,
         metadata: {}
       }));
 
       return (
         <QueryClientProvider client={queryClient}>
-          <NamespaceContext.Provider value={namespaceContext}>
-            <Story />
-          </NamespaceContext.Provider>
+          <Story />
         </QueryClientProvider>
       );
     }
   ],
-  title: 'Containers/ListPageLayout'
+  title: 'ListPageLayout'
 };
 
-export const Base = args => (
-  <ListPageLayoutContainer {...args}>
-    page content goes here
-  </ListPageLayoutContainer>
-);
-Base.args = {
-  hideNamespacesDropdown: false,
-  title: 'PipelineRuns'
+export const Base = {
+  render: args => (
+    <ListPageLayoutContainer {...args}>
+      {() => <span>page content goes here</span>}
+    </ListPageLayoutContainer>
+  )
 };
 
-export const WithFilters = args => (
-  <ListPageLayoutContainer filters={[]} {...args}>
-    page content goes here
-  </ListPageLayoutContainer>
-);
-WithFilters.args = {
-  hideNamespacesDropdown: false,
-  title: 'PipelineRuns'
+export const WithFilters = {
+  render: args => (
+    <ListPageLayoutContainer filters={[]} {...args}>
+      {() => <span>page content goes here</span>}
+    </ListPageLayoutContainer>
+  )
+};
+
+export const WithPagination = {
+  render: args => (
+    <ListPageLayoutContainer
+      filters={[]}
+      resources={Array.from({ length: 30 }, (_, index) => ({
+        id: `${index}`,
+        value: `Row ${index + 1}`
+      }))}
+      {...args}
+    >
+      {({ resources }) => (
+        <Table headers={[{ key: 'value', header: 'Value' }]} rows={resources} />
+      )}
+    </ListPageLayoutContainer>
+  )
 };

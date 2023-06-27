@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,16 +12,39 @@ limitations under the License.
 */
 
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import { useLocation } from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import { getFilters, urls, useTitleSync } from '@tektoncd/dashboard-utils';
-import { FormattedDate, Table } from '@tektoncd/dashboard-components';
-import { Link as CarbonLink } from 'carbon-components-react';
+import {
+  Link as CustomLink,
+  FormattedDate,
+  Table
+} from '@tektoncd/dashboard-components';
 
 import { ListPageLayout } from '..';
 import { useClusterTriggerBindings } from '../../api';
 
-function ClusterTriggerBindings({ intl }) {
+function getFormattedResources(resources) {
+  return resources.map(binding => ({
+    id: `${binding.metadata.name}`,
+    name: (
+      <Link
+        component={CustomLink}
+        to={urls.clusterTriggerBindings.byName({
+          clusterTriggerBindingName: binding.metadata.name
+        })}
+        title={binding.metadata.name}
+      >
+        {binding.metadata.name}
+      </Link>
+    ),
+    date: <FormattedDate date={binding.metadata.creationTimestamp} relative />
+  }));
+}
+
+function ClusterTriggerBindings() {
+  const intl = useIntl();
   const location = useLocation();
   const filters = getFilters(location);
 
@@ -58,52 +81,36 @@ function ClusterTriggerBindings({ intl }) {
     }
   ];
 
-  const clusterTriggerBindingsFormatted = clusterTriggerBindings.map(
-    binding => ({
-      id: `${binding.metadata.name}`,
-      name: (
-        <Link
-          component={CarbonLink}
-          to={urls.clusterTriggerBindings.byName({
-            clusterTriggerBindingName: binding.metadata.name
-          })}
-          title={binding.metadata.name}
-        >
-          {binding.metadata.name}
-        </Link>
-      ),
-      date: <FormattedDate date={binding.metadata.creationTimestamp} relative />
-    })
-  );
-
   return (
     <ListPageLayout
       error={getError()}
       filters={filters}
-      hideNamespacesDropdown
+      resources={clusterTriggerBindings}
       title="ClusterTriggerBindings"
     >
-      <Table
-        headers={initialHeaders}
-        rows={clusterTriggerBindingsFormatted}
-        loading={isLoading}
-        emptyTextAllNamespaces={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.clusterResource',
-            defaultMessage: 'No matching {kind} found'
-          },
-          { kind: 'ClusterTriggerBindings' }
-        )}
-        emptyTextSelectedNamespace={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.clusterResource',
-            defaultMessage: 'No matching {kind} found'
-          },
-          { kind: 'ClusterTriggerBindings' }
-        )}
-      />
+      {({ resources }) => (
+        <Table
+          headers={initialHeaders}
+          rows={getFormattedResources(resources)}
+          loading={isLoading}
+          emptyTextAllNamespaces={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.clusterResource',
+              defaultMessage: 'No matching {kind} found'
+            },
+            { kind: 'ClusterTriggerBindings' }
+          )}
+          emptyTextSelectedNamespace={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.clusterResource',
+              defaultMessage: 'No matching {kind} found'
+            },
+            { kind: 'ClusterTriggerBindings' }
+          )}
+        />
+      )}
     </ListPageLayout>
   );
 }
 
-export default injectIntl(ClusterTriggerBindings);
+export default ClusterTriggerBindings;

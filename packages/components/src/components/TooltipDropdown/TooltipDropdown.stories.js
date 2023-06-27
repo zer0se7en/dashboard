@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -15,15 +15,14 @@ import React from 'react';
 
 import TooltipDropdown from './TooltipDropdown';
 
-const props = {
-  id: 'tooltip-dropdown-id',
-  label: 'Select an item',
-  items: ['item 1', 'item 2', 'item 3', 'item 4', 'item 5', 'item 6'],
-  loading: false
-};
-
 export default {
-  args: { titleText: '' },
+  args: {
+    id: 'tooltip-dropdown-id',
+    label: 'Select an item',
+    items: ['item 1', 'item 2', 'item 3', 'item 4', 'item 5', 'item 6'],
+    loading: false,
+    titleText: ''
+  },
   component: TooltipDropdown,
   decorators: [
     Story => (
@@ -32,13 +31,15 @@ export default {
       </div>
     )
   ],
-  title: 'Components/TooltipDropdown'
+  title: 'TooltipDropdown'
 };
 
-export const Base = args => <TooltipDropdown {...props} {...args} />;
+export const Base = {};
 
-export const Loading = args => <TooltipDropdown {...props} loading {...args} />;
+export const Loading = {
+  args: { loading: true }
+};
 
-export const Empty = args => (
-  <TooltipDropdown {...props} items={[]} {...args} />
-);
+export const Empty = {
+  args: { items: [] }
+};

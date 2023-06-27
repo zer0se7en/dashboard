@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -18,15 +18,15 @@ import { LogoutButton } from '..';
 
 export default {
   component: Header,
-  title: 'Components/Header'
+  title: 'Header'
 };
 
-export const Base = () => <Header />;
+export const Base = {};
 
-export const WithLogout = () => (
-  <Header
-    logoutButton={
+export const WithLogout = {
+  args: {
+    children: (
       <LogoutButton getLogoutURL={() => Promise.resolve('/something')} />
-    }
-  />
-);
+    )
+  }
+};

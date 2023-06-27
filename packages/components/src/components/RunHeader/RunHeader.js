@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -26,6 +26,8 @@ class RunHeader extends Component {
 
   render() {
     const {
+      children,
+      icon,
       intl,
       lastTransitionTime,
       loading,
@@ -61,6 +63,7 @@ class RunHeader extends Component {
                   <div className="tkn--run-name" title={runName}>
                     {runName}
                   </div>
+                  {icon}
                   <span className="tkn--time">
                     {lastTransitionTime
                       ? intl.formatMessage(
@@ -79,7 +82,7 @@ class RunHeader extends Component {
                         )
                       : null}
                   </span>
-                  {this.props.children}
+                  {children}
                 </h1>
                 <div className="tkn--status">
                   <span className="tkn--status-label">{reason}</span>

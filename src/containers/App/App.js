@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,17 +12,16 @@ limitations under the License.
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { hot } from 'react-hot-loader/root';
+import { Link, Redirect, HashRouter as Router, Switch } from 'react-router-dom';
 import {
-  Link,
-  Redirect,
+  CompatRoute,
+  CompatRouter,
   Route,
-  HashRouter as Router,
-  Switch
-} from 'react-router-dom';
-
-import { injectIntl, IntlProvider } from 'react-intl';
+  Routes
+} from 'react-router-dom-v5-compat';
+import { IntlProvider, useIntl } from 'react-intl';
 import { Content, InlineNotification } from 'carbon-components-react';
 
 import {
@@ -45,20 +44,20 @@ import {
   ClusterTasks,
   ClusterTriggerBinding,
   ClusterTriggerBindings,
-  Condition,
-  Conditions,
-  CreatePipelineResource,
   CreatePipelineRun,
   CreateTaskRun,
   CustomResourceDefinition,
+  CustomRun,
+  CustomRuns,
   EventListener,
   EventListeners,
   Extension,
   Extensions,
+  HeaderBarContent,
   ImportResources,
+  Interceptors,
+  NamespacedRoute,
   NotFound,
-  PipelineResource,
-  PipelineResources,
   PipelineRun,
   PipelineRuns,
   Pipelines,
@@ -80,7 +79,6 @@ import {
 import {
   NamespaceContext,
   useExtensions,
-  useIsReadOnly,
   useLogoutURL,
   useNamespaces,
   useProperties,
@@ -94,7 +92,8 @@ import '../../scss/App.scss';
 const { default: defaultLocale, supported: supportedLocales } = config.locales;
 
 /* istanbul ignore next */
-const ConfigErrorComponent = ({ intl, loadingConfigError }) => {
+const ConfigErrorComponent = ({ loadingConfigError }) => {
+  const intl = useIntl();
   if (!loadingConfigError) {
     return null;
   }
@@ -112,14 +111,17 @@ const ConfigErrorComponent = ({ intl, loadingConfigError }) => {
   );
 };
 
-const ConfigError = injectIntl(ConfigErrorComponent);
+const ConfigError = ConfigErrorComponent;
 
 async function loadMessages(lang) {
   const isSupportedLocale = supportedLocales.includes(lang);
   const targetLocale = isSupportedLocale ? lang : defaultLocale;
-  const { default: loadedMessages } = await import(
-    /* webpackChunkName: "[request]" */ `../../nls/messages_${targetLocale}.json`
-  );
+  // TODO: Can't use destructuring assignment due to https://github.com/webpack/webpack/issues/17042, revert when fixed
+  const loadedMessages = (
+    await import(
+      /* webpackChunkName: "[request]" */ `../../nls/messages_${targetLocale}.json`
+    )
+  ).default;
   /* istanbul ignore next */
   if (process.env.I18N_PSEUDO) {
     const startBoundary = '[[%';
@@ -151,13 +153,13 @@ function HeaderNameLink(props) {
 export function App({ lang }) {
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
   const [selectedNamespace, setSelectedNamespace] = useState(ALL_NAMESPACES);
+  const [namespacedMatch, setNamespacedMatch] = useState(null);
 
   const {
     error: propertiesError,
     isFetching: isFetchingProperties,
     isPlaceholderData: isPropertiesPlaceholder
   } = useProperties();
-  const isReadOnly = useIsReadOnly();
   const logoutURL = useLogoutURL();
   const tenantNamespace = useTenantNamespace();
 
@@ -199,224 +201,318 @@ export function App({ lang }) {
   const logoutButton = <LogoutButton getLogoutURL={() => logoutURL} />;
 
   const namespaceContext = useMemo(
-    () => ({ selectedNamespace, selectNamespace: setSelectedNamespace }),
-    [selectedNamespace]
+    () => ({
+      namespacedMatch,
+      selectedNamespace,
+      selectNamespace: setSelectedNamespace,
+      setNamespacedMatch
+    }),
+    [namespacedMatch, selectedNamespace]
+  );
+
+  const header = (
+    <Header
+      headerNameProps={{
+        element: HeaderNameLink
+      }}
+      isSideNavExpanded={isSideNavExpanded}
+      onHeaderMenuButtonClick={() => {
+        setIsSideNavExpanded(prevIsSideNavExpanded => !prevIsSideNavExpanded);
+      }}
+    >
+      <HeaderBarContent logoutButton={logoutButton} />
+    </Header>
   );
 
   return (
     <NamespaceContext.Provider value={namespaceContext}>
       <IntlProvider
         defaultLocale={defaultLocale}
-        locale={messages[lang] ? lang : defaultLocale}
-        messages={messages[lang]}
+        locale={messages?.[lang] ? lang : defaultLocale}
+        messages={messages?.[lang]}
       >
-        <ConfigError loadingConfigError={loadingConfigError} />
-
         {showLoadingState && <LoadingShell />}
         {!showLoadingState && (
           <Router>
-            <>
-              <Header
-                headerNameProps={{
-                  element: HeaderNameLink
-                }}
-                isSideNavExpanded={isSideNavExpanded}
-                logoutButton={logoutButton}
-                onHeaderMenuButtonClick={() => {
-                  setIsSideNavExpanded(
-                    prevIsSideNavExpanded => !prevIsSideNavExpanded
-                  );
-                }}
-              />
-              <Route path={paths.byNamespace({ path: '/*' })}>
-                {() => <SideNav expanded={isSideNavExpanded} />}
-              </Route>
+            <CompatRouter>
+              <>
+                <Routes>
+                  <Route
+                    path={paths.byNamespace({ path: '/*' })}
+                    element={header}
+                  />
+                  <Route path="*" element={header} />
+                </Routes>
+                <SideNav expanded={isSideNavExpanded} />
 
-              <Content
-                id="main-content"
-                className="tkn--main-content"
-                aria-labelledby="main-content-header"
-                tabIndex="0"
-              >
-                <PageErrorBoundary>
-                  <Switch>
-                    <Redirect exact from="/" to={urls.about()} />
-                    <Route path={paths.pipelines.all()} exact>
-                      <Pipelines />
-                    </Route>
-                    <Route path={paths.pipelines.byNamespace()} exact>
-                      <Pipelines />
-                    </Route>
-                    <ReadWriteRoute
-                      isReadOnly={isReadOnly}
-                      path={paths.pipelineRuns.create()}
-                      exact
-                      component={CreatePipelineRun}
-                    />
-                    <Route path={paths.pipelineRuns.all()}>
-                      <PipelineRuns />
-                    </Route>
-                    <Route path={paths.pipelineRuns.byNamespace()} exact>
-                      <PipelineRuns />
-                    </Route>
-                    <Route path={paths.pipelineRuns.byPipeline()} exact>
-                      <PipelineRuns />
-                    </Route>
-                    <Route path={paths.pipelineRuns.byName()}>
-                      <PipelineRun />
-                    </Route>
-                    <Route path={paths.pipelineResources.all()} exact>
-                      <PipelineResources />
-                    </Route>
-                    <Route path={paths.pipelineResources.byNamespace()} exact>
-                      <PipelineResources />
-                    </Route>
-                    <Route path={paths.pipelineResources.byName()} exact>
-                      <PipelineResource />
-                    </Route>
-                    <ReadWriteRoute
-                      isReadOnly={isReadOnly}
-                      path={paths.pipelineResources.create()}
-                      exact
-                      component={CreatePipelineResource}
-                    />
-
-                    <Route path={paths.tasks.all()} exact>
-                      <Tasks />
-                    </Route>
-                    <Route path={paths.tasks.byNamespace()} exact>
-                      <Tasks />
-                    </Route>
-                    <ReadWriteRoute
-                      isReadOnly={isReadOnly}
-                      path={paths.taskRuns.create()}
-                      exact
-                      component={CreateTaskRun}
-                    />
-                    <Route path={paths.taskRuns.all()}>
-                      <TaskRuns />
-                    </Route>
-                    <Route path={paths.taskRuns.byNamespace()} exact>
-                      <TaskRuns />
-                    </Route>
-                    <Route path={paths.taskRuns.byTask()} exact>
-                      <TaskRuns />
-                    </Route>
-                    <Route path={paths.taskRuns.byName()} exact>
-                      <TaskRun />
-                    </Route>
-                    <Route path={paths.clusterTasks.all()} exact>
-                      <ClusterTasks />
-                    </Route>
-                    <Route path={paths.conditions.all()}>
-                      <Conditions />
-                    </Route>
-                    <Route path={paths.conditions.byNamespace()} exact>
-                      <Conditions />
-                    </Route>
-                    <Route path={paths.conditions.byName()}>
-                      <Condition />
-                    </Route>
-
-                    <Route path={paths.about()}>
-                      <About />
-                    </Route>
-                    <Route path={paths.settings()}>
-                      <Settings />
-                    </Route>
-
-                    <ReadWriteRoute
-                      isReadOnly={isReadOnly}
-                      path={paths.importResources()}
-                      component={ImportResources}
-                    />
-
-                    <Route path={paths.eventListeners.all()} exact>
-                      <EventListeners />
-                    </Route>
-                    <Route path={paths.eventListeners.byNamespace()} exact>
-                      <EventListeners />
-                    </Route>
-                    <Route path={paths.eventListeners.byName()} exact>
-                      <EventListener />
-                    </Route>
-                    <Route path={paths.triggers.byName()} exact>
-                      <Trigger />
-                    </Route>
-                    <Route path={paths.triggers.all()} exact>
-                      <Triggers />
-                    </Route>
-                    <Route path={paths.triggers.byNamespace()} exact>
-                      <Triggers />
-                    </Route>
-                    <Route path={paths.triggerBindings.byName()} exact>
-                      <TriggerBinding />
-                    </Route>
-                    <Route path={paths.triggerBindings.all()} exact>
-                      <TriggerBindings />
-                    </Route>
-                    <Route path={paths.triggerBindings.byNamespace()} exact>
-                      <TriggerBindings />
-                    </Route>
-                    <Route path={paths.clusterTriggerBindings.byName()} exact>
-                      <ClusterTriggerBinding />
-                    </Route>
-                    <Route path={paths.clusterTriggerBindings.all()} exact>
-                      <ClusterTriggerBindings />
-                    </Route>
-                    <Route path={paths.triggerTemplates.byName()} exact>
-                      <TriggerTemplate />
-                    </Route>
-                    <Route path={paths.triggerTemplates.all()} exact>
-                      <TriggerTemplates />
-                    </Route>
-                    <Route path={paths.triggerTemplates.byNamespace()} exact>
-                      <TriggerTemplates />
-                    </Route>
-                    <Route path={paths.clusterInterceptors.all()} exact>
-                      <ClusterInterceptors />
-                    </Route>
-                    <Route path={paths.extensions.all()} exact>
-                      <Extensions />
-                    </Route>
-                    {extensions
-                      .filter(extension => !extension.type)
-                      .map(({ displayName, name, source }) => (
-                        <Route
-                          key={name}
-                          path={paths.extensions.byName({ name })}
-                        >
-                          <Extension
-                            displayName={displayName}
-                            source={source}
-                          />
-                        </Route>
-                      ))}
-
-                    <Route path={paths.rawCRD.byNamespace()} exact>
-                      <CustomResourceDefinition />
-                    </Route>
-                    <Route path={paths.rawCRD.cluster()} exact>
-                      <CustomResourceDefinition />
-                    </Route>
-                    <Route path={paths.kubernetesResources.all()} exact>
-                      <ResourceList />
-                    </Route>
-                    <Route path={paths.kubernetesResources.byNamespace()} exact>
-                      <ResourceList />
-                    </Route>
-                    <Route path={paths.kubernetesResources.byName()} exact>
-                      <CustomResourceDefinition />
-                    </Route>
-                    <Route path={paths.kubernetesResources.cluster()} exact>
-                      <CustomResourceDefinition />
-                    </Route>
-
-                    <NotFound />
-                  </Switch>
-                </PageErrorBoundary>
-              </Content>
-            </>
+                <Content
+                  id="main-content"
+                  className="tkn--main-content"
+                  aria-labelledby="main-content-header"
+                  tabIndex="0"
+                >
+                  <ConfigError loadingConfigError={loadingConfigError} />
+                  <PageErrorBoundary>
+                    <Switch>
+                      <CompatRoute path="/" exact>
+                        <Redirect to={urls.about()} />
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelines.all()} exact>
+                        <NamespacedRoute>
+                          <Pipelines />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelines.byNamespace()} exact>
+                        <NamespacedRoute>
+                          <Pipelines />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelineRuns.create()} exact>
+                        <ReadWriteRoute>
+                          <CreatePipelineRun />
+                        </ReadWriteRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelineRuns.all()}>
+                        <NamespacedRoute>
+                          <PipelineRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.pipelineRuns.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <PipelineRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelineRuns.byPipeline()} exact>
+                        <NamespacedRoute>
+                          <PipelineRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.pipelineRuns.byName()}>
+                        <NamespacedRoute isResourceDetails>
+                          <PipelineRun />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.tasks.all()} exact>
+                        <NamespacedRoute>
+                          <Tasks />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.tasks.byNamespace()} exact>
+                        <NamespacedRoute>
+                          <Tasks />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.taskRuns.create()} exact>
+                        <ReadWriteRoute>
+                          <CreateTaskRun />
+                        </ReadWriteRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.taskRuns.all()}>
+                        <NamespacedRoute>
+                          <TaskRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.taskRuns.byNamespace()} exact>
+                        <NamespacedRoute>
+                          <TaskRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.taskRuns.byTask()} exact>
+                        <NamespacedRoute>
+                          <TaskRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.taskRuns.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <TaskRun />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.customRuns.all()}>
+                        <NamespacedRoute>
+                          <CustomRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.customRuns.byNamespace()} exact>
+                        <NamespacedRoute>
+                          <CustomRuns />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.customRuns.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <CustomRun />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.clusterTasks.all()} exact>
+                        <ClusterTasks />
+                      </CompatRoute>
+                      <CompatRoute path={paths.about()}>
+                        <About />
+                      </CompatRoute>
+                      <CompatRoute path={paths.settings()}>
+                        <Settings />
+                      </CompatRoute>
+                      <CompatRoute path={paths.importResources()}>
+                        <ReadWriteRoute>
+                          <ImportResources />
+                        </ReadWriteRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.eventListeners.all()} exact>
+                        <NamespacedRoute>
+                          <EventListeners />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.eventListeners.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <EventListeners />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.eventListeners.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <EventListener />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggers.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <Trigger />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggers.all()} exact>
+                        <NamespacedRoute>
+                          <Triggers />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggers.byNamespace()} exact>
+                        <NamespacedRoute>
+                          <Triggers />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggerBindings.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <TriggerBinding />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggerBindings.all()} exact>
+                        <NamespacedRoute>
+                          <TriggerBindings />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.triggerBindings.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <TriggerBindings />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.clusterTriggerBindings.byName()}
+                        exact
+                      >
+                        <ClusterTriggerBinding />
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.clusterTriggerBindings.all()}
+                        exact
+                      >
+                        <ClusterTriggerBindings />
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggerTemplates.byName()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <TriggerTemplate />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.triggerTemplates.all()} exact>
+                        <NamespacedRoute>
+                          <TriggerTemplates />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.triggerTemplates.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <TriggerTemplates />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.interceptors.all()} exact>
+                        <NamespacedRoute>
+                          <Interceptors />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.interceptors.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <Interceptors />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.clusterInterceptors.all()} exact>
+                        <ClusterInterceptors />
+                      </CompatRoute>
+                      <CompatRoute path={paths.extensions.all()} exact>
+                        <Extensions />
+                      </CompatRoute>
+                      {extensions
+                        .filter(extension => !extension.type)
+                        .map(({ displayName, name, source }) => (
+                          <CompatRoute
+                            key={name}
+                            path={paths.extensions.byName({ name })}
+                          >
+                            <Extension
+                              displayName={displayName}
+                              source={source}
+                            />
+                          </CompatRoute>
+                        ))}
+                      <CompatRoute path={paths.rawCRD.byNamespace()} exact>
+                        <NamespacedRoute isResourceDetails>
+                          <CustomResourceDefinition />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute path={paths.rawCRD.cluster()} exact>
+                        <CustomResourceDefinition />
+                      </CompatRoute>
+                      <CompatRoute path={paths.kubernetesResources.all()} exact>
+                        <NamespacedRoute>
+                          <ResourceList />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.kubernetesResources.byNamespace()}
+                        exact
+                      >
+                        <NamespacedRoute>
+                          <ResourceList />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.kubernetesResources.byName()}
+                        exact
+                      >
+                        <NamespacedRoute isResourceDetails>
+                          <CustomResourceDefinition />
+                        </NamespacedRoute>
+                      </CompatRoute>
+                      <CompatRoute
+                        path={paths.kubernetesResources.cluster()}
+                        exact
+                      >
+                        <CustomResourceDefinition />
+                      </CompatRoute>
+                      <NotFound />
+                    </Switch>
+                  </PageErrorBoundary>
+                </Content>
+              </>
+            </CompatRouter>
           </Router>
         )}
       </IntlProvider>

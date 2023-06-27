@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,151 +11,195 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import fetchMock from 'fetch-mock';
-
+import yaml from 'js-yaml';
 import * as API from './pipelineRuns';
 import * as utils from './utils';
+import * as comms from './comms';
+import { rest, server } from '../../config_frontend/msw';
+import { generateNewPipelineRunPayload } from './pipelineRuns';
 
-it('cancelPipelineRun', () => {
-  const name = 'foo';
-  const namespace = 'foospace';
-  const payload = [
-    { op: 'replace', path: '/spec/status', value: 'PipelineRunCancelled' }
-  ];
-  const returnedPipelineRun = { fake: 'PipelineRun' };
-  fetchMock.patch(`end:${name}`, returnedPipelineRun);
-  return API.cancelPipelineRun({ name, namespace }).then(response => {
-    expect(fetchMock.lastOptions()).toMatchObject({
-      body: JSON.stringify(payload)
+describe('cancelPipelineRun', () => {
+  it('default', () => {
+    const name = 'foo';
+    const namespace = 'foospace';
+    jest.spyOn(comms, 'patch').mockImplementation((uri, payload) => {
+      expect(payload).toEqual([
+        { op: 'replace', path: '/spec/status', value: 'Cancelled' }
+      ]);
     });
-    expect(response).toEqual(returnedPipelineRun);
-    fetchMock.restore();
+    return API.cancelPipelineRun({ name, namespace });
+  });
+
+  it('with non-default status', () => {
+    const name = 'foo';
+    const namespace = 'foospace';
+    const status = 'StoppedRunFinally';
+    jest.spyOn(comms, 'patch').mockImplementation((uri, payload) => {
+      expect(payload).toEqual([
+        { op: 'replace', path: '/spec/status', value: status }
+      ]);
+    });
+    return API.cancelPipelineRun({ name, namespace, status });
   });
 });
 
-it('createPipelineRun', () => {
-  const mockDateNow = jest
-    .spyOn(Date, 'now')
-    .mockImplementation(() => 'fake-timestamp');
-  const pipelineName = 'fake-pipelineName';
-  const resources = { 'fake-resource-name': 'fake-resource-value' };
-  const params = { 'fake-param-name': 'fake-param-value' };
-  const serviceAccount = 'fake-serviceAccount';
-  const timeout = 'fake-timeout';
-  const payload = {
-    pipelineName,
-    resources,
-    params,
-    serviceAccount,
-    timeout
-  };
-  const data = {
-    apiVersion: 'tekton.dev/v1beta1',
-    kind: 'PipelineRun',
-    metadata: {
-      name: `${pipelineName}-run-${Date.now()}`
-    },
-    spec: {
-      pipelineRef: {
-        name: pipelineName
+describe('createPipelineRun', () => {
+  it('basic', () => {
+    const mockDateNow = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => 'fake-timestamp');
+    const pipelineName = 'fake-pipelineName';
+    const params = { 'fake-param-name': 'fake-param-value' };
+    const serviceAccount = 'fake-serviceAccount';
+    const timeout = 'fake-timeout';
+    const payload = {
+      pipelineName,
+      params,
+      serviceAccount,
+      timeoutsPipeline: timeout
+    };
+    const data = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        name: `${pipelineName}-run-${Date.now()}`
       },
-      resources: Object.keys(resources).map(name => ({
-        name,
-        resourceRef: { name: resources[name] }
-      })),
-      params: Object.keys(params).map(name => ({
-        name,
-        value: params[name]
-      })),
-      serviceAccountName: serviceAccount,
-      timeout
-    }
-  };
-  fetchMock.post('*', { body: data, status: 201 });
-  return API.createPipelineRun(payload).then(response => {
-    expect(response).toEqual(data);
-    expect(fetchMock.lastOptions()).toMatchObject({
-      body: JSON.stringify(data)
-    });
-    fetchMock.restore();
-    mockDateNow.mockRestore();
-  });
-});
-
-it('createPipelineRun with nodeSelector', () => {
-  const mockDateNow = jest
-    .spyOn(Date, 'now')
-    .mockImplementation(() => 'fake-timestamp');
-  const pipelineName = 'fake-pipelineName';
-  const resources = { 'fake-resource-name': 'fake-resource-value' };
-  const params = { 'fake-param-name': 'fake-param-value' };
-  const serviceAccount = 'fake-serviceAccount';
-  const timeout = 'fake-timeout';
-  const payload = {
-    pipelineName,
-    resources,
-    params,
-    serviceAccount,
-    timeout,
-    nodeSelector: {
-      disk: 'ssd'
-    }
-  };
-  const data = {
-    apiVersion: 'tekton.dev/v1beta1',
-    kind: 'PipelineRun',
-    metadata: {
-      name: `${pipelineName}-run-${Date.now()}`
-    },
-    spec: {
-      pipelineRef: {
-        name: pipelineName
-      },
-      resources: Object.keys(resources).map(name => ({
-        name,
-        resourceRef: { name: resources[name] }
-      })),
-      params: Object.keys(params).map(name => ({
-        name,
-        value: params[name]
-      })),
-      podTemplate: {
-        nodeSelector: {
-          disk: 'ssd'
+      spec: {
+        pipelineRef: {
+          name: pipelineName
+        },
+        params: Object.keys(params).map(name => ({
+          name,
+          value: params[name]
+        })),
+        serviceAccountName: serviceAccount,
+        timeouts: {
+          pipeline: timeout
         }
+      }
+    };
+
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+
+    return API.createPipelineRun(payload).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      expect(comms.post.mock.lastCall[1]).toMatchObject(data);
+      mockDateNow.mockRestore();
+    });
+  });
+
+  it('with nodeSelector', () => {
+    const mockDateNow = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => 'fake-timestamp');
+    const pipelineName = 'fake-pipelineName';
+    const params = { 'fake-param-name': 'fake-param-value' };
+    const serviceAccount = 'fake-serviceAccount';
+    const timeout = 'fake-timeout';
+    const payload = {
+      pipelineName,
+      params,
+      serviceAccount,
+      timeoutsPipeline: timeout,
+      nodeSelector: {
+        disk: 'ssd'
+      }
+    };
+    const data = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        name: `${pipelineName}-run-${Date.now()}`
       },
-      serviceAccountName: serviceAccount,
-      timeout
+      spec: {
+        pipelineRef: {
+          name: pipelineName
+        },
+        params: Object.keys(params).map(name => ({
+          name,
+          value: params[name]
+        })),
+        podTemplate: {
+          nodeSelector: {
+            disk: 'ssd'
+          }
+        },
+        serviceAccountName: serviceAccount,
+        timeouts: {
+          pipeline: timeout
+        }
+      }
+    };
+    jest
+      .spyOn(comms, 'post')
+      .mockImplementation((uri, body) => Promise.resolve(body));
+
+    return API.createPipelineRun(payload).then(() => {
+      expect(comms.post).toHaveBeenCalled();
+      expect(comms.post.mock.lastCall[1]).toMatchObject(data);
+      mockDateNow.mockRestore();
+    });
+  });
+});
+
+it('createPipelineRunRaw', () => {
+  const pipelineRunRaw = {
+    apiVersion: 'tekton.dev/v1beta1',
+    kind: 'PipelineRun',
+    metadata: { name: 'test-pipeline-run-name', namespace: 'test-namespace' },
+    spec: {
+      pipelineSpec: {
+        tasks: [
+          {
+            name: 'hello',
+            taskSpec: {
+              steps: [
+                {
+                  image: 'busybox',
+                  name: 'echo',
+                  script: '#!/bin/ash\necho "Hello World!"\n'
+                }
+              ]
+            }
+          }
+        ]
+      }
     }
   };
-  fetchMock.post('*', { body: data, status: 201 });
-  return API.createPipelineRun(payload).then(response => {
-    expect(response).toEqual(data);
-    expect(fetchMock.lastOptions()).toMatchObject({
-      body: JSON.stringify(data)
-    });
-    fetchMock.restore();
-    mockDateNow.mockRestore();
+  jest
+    .spyOn(comms, 'post')
+    .mockImplementation((uri, body) => Promise.resolve(body));
+
+  return API.createPipelineRunRaw({
+    namespace: 'test-namespace',
+    payload: pipelineRunRaw
+  }).then(() => {
+    expect(comms.post).toHaveBeenCalled();
+    expect(comms.post.mock.lastCall[1]).toEqual(pipelineRunRaw);
   });
 });
 
 it('deletePipelineRun', () => {
   const name = 'foo';
   const data = { fake: 'pipelineRun' };
-  fetchMock.delete(`end:${name}`, data);
+  server.use(
+    rest.delete(new RegExp(`/${name}$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.deletePipelineRun({ name }).then(pipelineRun => {
     expect(pipelineRun).toEqual(data);
-    fetchMock.restore();
   });
 });
 
 it('getPipelineRun', () => {
   const name = 'foo';
   const data = { fake: 'pipelineRun' };
-  fetchMock.get(`end:${name}`, data);
+  server.use(
+    rest.get(new RegExp(`/${name}$`), (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getPipelineRun({ name }).then(pipelineRun => {
     expect(pipelineRun).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -163,10 +207,11 @@ it('getPipelineRuns', () => {
   const data = {
     items: 'pipelineRuns'
   };
-  fetchMock.get(/pipelineruns/, data);
+  server.use(
+    rest.get(/\/pipelineruns\//, (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getPipelineRuns({ filters: [] }).then(pipelineRuns => {
     expect(pipelineRuns).toEqual(data);
-    fetchMock.restore();
   });
 });
 
@@ -175,11 +220,12 @@ it('getPipelineRuns With Query Params', () => {
   const data = {
     items: 'pipelineRuns'
   };
-  fetchMock.get(/pipelineruns/, data);
+  server.use(
+    rest.get(/\/pipelineruns\//, (req, res, ctx) => res(ctx.json(data)))
+  );
   return API.getPipelineRuns({ pipelineName, filters: [] }).then(
     pipelineRuns => {
       expect(pipelineRuns).toEqual(data);
-      fetchMock.restore();
     }
   );
 });
@@ -224,39 +270,224 @@ it('usePipelineRun', () => {
 });
 
 it('rerunPipelineRun', () => {
-  const filter = 'end:/pipelineruns/';
   const originalPipelineRun = {
-    metadata: { name: 'fake_pipelineRun' },
+    metadata: {
+      labels: {
+        'tekton.dev/pipeline': 'foo'
+      },
+      name: 'fake_pipelineRun'
+    },
     spec: { status: 'fake_status' },
     status: 'fake_status'
   };
-  const newPipelineRun = { metadata: { name: 'fake_pipelineRun_rerun' } };
-  fetchMock.post(filter, { body: newPipelineRun, status: 201 });
-  return API.rerunPipelineRun(originalPipelineRun).then(data => {
-    const body = JSON.parse(fetchMock.lastCall(filter)[1].body);
-    expect(body.metadata.generateName).toMatch(
-      new RegExp(originalPipelineRun.metadata.name)
-    );
-    expect(body.status).toBeUndefined();
-    expect(body.spec.status).toBeUndefined();
-    expect(data).toEqual(newPipelineRun);
-    fetchMock.restore();
+  jest
+    .spyOn(comms, 'post')
+    .mockImplementation((uri, body) => Promise.resolve(body));
+
+  const rerun = {
+    apiVersion: 'tekton.dev/v1beta1',
+    kind: 'PipelineRun',
+    metadata: {
+      annotations: {},
+      generateName: `${originalPipelineRun.metadata.name}-r-`,
+      labels: {
+        'dashboard.tekton.dev/rerunOf': originalPipelineRun.metadata.name
+      }
+    },
+    spec: {}
+  };
+  return API.rerunPipelineRun(originalPipelineRun).then(() => {
+    expect(comms.post).toHaveBeenCalled();
+    expect(comms.post.mock.lastCall[1]).toEqual(rerun);
   });
 });
 
 it('startPipelineRun', () => {
   const name = 'foo';
   const namespace = 'foospace';
-  const returnedPipelineRun = { fake: 'PipelineRun' };
   const payload = [{ op: 'remove', path: '/spec/status' }];
-  fetchMock.patch(`end:${name}`, returnedPipelineRun);
-  return API.startPipelineRun({ metadata: { name, namespace } }).then(
-    response => {
-      expect(fetchMock.lastOptions()).toMatchObject({
-        body: JSON.stringify(payload)
-      });
-      expect(response).toEqual(returnedPipelineRun);
-      fetchMock.restore();
-    }
-  );
+  jest
+    .spyOn(comms, 'patch')
+    .mockImplementation((uri, body) => Promise.resolve(body));
+  return API.startPipelineRun({ metadata: { name, namespace } }).then(() => {
+    expect(comms.patch).toHaveBeenCalled();
+    expect(comms.patch.mock.lastCall[1]).toEqual(payload);
+  });
+});
+
+describe('generateNewPipelineRunPayload', () => {
+  it('rerun with minimum possible fields', () => {
+    const pipelineRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace'
+      },
+      spec: {
+        pipelineRef: {
+          name: 'simple'
+        }
+      }
+    };
+    const { namespace, payload } = generateNewPipelineRunPayload({
+      pipelineRun,
+      rerun: true
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  annotations: {}
+  generateName: test-r-
+  labels:
+    dashboard.tekton.dev/rerunOf: test
+  namespace: test-namespace
+spec:
+  pipelineRef:
+    name: simple
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('rerun with all processed fields', () => {
+    const pipelineRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace',
+        annotations: {
+          keya: 'valuea',
+          'kubectl.kubernetes.io/last-applied-configuration':
+            '{"apiVersion": "tekton.dev/v1beta1", "keya": "valuea"}'
+        },
+        labels: {
+          key1: 'valuel',
+          key2: 'value2',
+          'tekton.dev/pipeline': 'foo'
+        },
+        uid: '111-233-33',
+        resourceVersion: 'aaaa'
+      },
+      spec: {
+        pipelineRef: {
+          name: 'simple'
+        },
+        params: [{ name: 'param-1' }, { name: 'param-2' }]
+      },
+      status: { startTime: '0' }
+    };
+    const { namespace, payload } = generateNewPipelineRunPayload({
+      pipelineRun,
+      rerun: true
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  annotations:
+    keya: valuea
+  generateName: test-r-
+  labels:
+    key1: valuel
+    key2: value2
+    dashboard.tekton.dev/rerunOf: test
+  namespace: test-namespace
+spec:
+  pipelineRef:
+    name: simple
+  params:
+    - name: param-1
+    - name: param-2
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('edit with minimum possible fields', () => {
+    const pipelineRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        name: 'test',
+        namespace: 'test-namespace'
+      },
+      spec: {
+        pipelineRef: {
+          name: 'simple'
+        }
+      }
+    };
+    const { namespace, payload } = generateNewPipelineRunPayload({
+      pipelineRun,
+      rerun: false
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  annotations: {}
+  generateName: test-
+  labels: {}
+  namespace: test-namespace
+spec:
+  pipelineRef:
+    name: simple
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
+
+  it('edit with all processed fields', () => {
+    const pipelineRun = {
+      apiVersion: 'tekton.dev/v1beta1',
+      kind: 'PipelineRun',
+      metadata: {
+        annotations: {
+          keya: 'valuea',
+          'kubectl.kubernetes.io/last-applied-configuration':
+            '{"apiVersion": "tekton.dev/v1beta1", "keya": "valuea"}'
+        },
+        labels: {
+          key1: 'valuel',
+          key2: 'value2',
+          'tekton.dev/pipeline': 'foo',
+          'tekton.dev/run': 'bar'
+        },
+        name: 'test',
+        namespace: 'test-namespace',
+        uid: '111-233-33',
+        resourceVersion: 'aaaa'
+      },
+      spec: {
+        pipelineRef: {
+          name: 'simple'
+        },
+        params: [{ name: 'param-1' }, { name: 'param-2' }]
+      },
+      status: { startTime: '0' }
+    };
+    const { namespace, payload } = generateNewPipelineRunPayload({
+      pipelineRun,
+      rerun: false
+    });
+    const expected = `apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  annotations:
+    keya: valuea
+  generateName: test-
+  labels:
+    key1: valuel
+    key2: value2
+  namespace: test-namespace
+spec:
+  pipelineRef:
+    name: simple
+  params:
+    - name: param-1
+    - name: param-2
+`;
+    expect(namespace).toEqual('test-namespace');
+    expect(yaml.dump(payload)).toEqual(expected);
+  });
 });

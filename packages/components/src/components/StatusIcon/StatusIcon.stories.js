@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,8 +11,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
-
 import StatusIcon from './StatusIcon';
 
 export default {
@@ -21,9 +19,9 @@ export default {
   argTypes: {
     type: {
       control: {
-        type: 'inline-radio',
-        options: ['normal', 'inverse']
-      }
+        type: 'inline-radio'
+      },
+      options: ['normal', 'inverse']
     }
   },
   parameters: {
@@ -31,24 +29,55 @@ export default {
       default: 'white'
     }
   },
-  title: 'Components/StatusIcon'
+  title: 'StatusIcon'
 };
 
-export const Queued = args => <StatusIcon {...args} />;
+export const CancelledGraceful = {
+  args: {
+    reason: 'Cancelled',
+    status: 'False'
+  },
+  name: 'Cancelled - PipelineRun TEP-0058 graceful termination'
+};
 
-export const Pending = args => (
-  <StatusIcon reason="Pending" status="Unknown" {...args} />
-);
+export const CancelledPipelineRun = {
+  args: {
+    reason: 'PipelineRunCancelled',
+    status: 'False'
+  },
+  name: 'Cancelled - PipelineRun legacy'
+};
 
-export const Running = args => (
-  <StatusIcon reason="Running" status="Unknown" {...args} />
-);
+export const CancelledTaskRun = {
+  args: {
+    reason: 'TaskRunCancelled',
+    status: 'False'
+  },
+  name: 'Cancelled - TaskRun'
+};
 
-export const Succeeded = args => <StatusIcon status="True" {...args} />;
+export const Failed = {
+  args: { status: 'False' }
+};
 
-export const SucceededWithWarning = args => (
-  <StatusIcon hasWarning status="True" {...args} />
-);
-SucceededWithWarning.storyName = 'Succeeded with warning';
+export const Pending = {
+  args: {
+    reason: 'Pending',
+    status: 'Unknown'
+  }
+};
 
-export const Failed = args => <StatusIcon status="False" {...args} />;
+export const Queued = {};
+
+export const Running = {
+  args: { reason: 'Running', status: 'Unknown' }
+};
+
+export const Succeeded = {
+  args: { status: 'True' }
+};
+
+export const SucceededWithWarning = {
+  args: { hasWarning: true, status: 'True' },
+  name: 'Succeeded with warning'
+};

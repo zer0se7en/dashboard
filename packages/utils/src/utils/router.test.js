@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -10,17 +10,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router-dom-v5-compat';
 import { paths, urls } from './router';
 
 const clusterInterceptorName = 'fake_clusterInterceptorName';
 const clusterTriggerBindingName = 'fake_clusterTriggerBindingName';
-const conditionName = 'fake_conditionName';
 const eventListenerName = 'fake_eventListenerName';
 const namespace = 'fake_namespace';
 const pipelineName = 'fake_pipelineName';
-const pipelineResourceName = 'fake_pipelineResourceName';
 const pipelineRunName = 'fake_pipelineRunName';
+const runName = 'fake_runName';
 const taskName = 'fake_taskName';
 const taskRunName = 'fake_taskRunName';
 const triggerName = 'fake_triggerName';
@@ -82,27 +81,6 @@ describe('clusterTriggerBindings', () => {
       generatePath(paths.clusterTriggerBindings.byName(), {
         clusterTriggerBindingName
       })
-    );
-  });
-});
-
-describe('conditions', () => {
-  it('all', () => {
-    expect(urls.conditions.all()).toEqual(generatePath(paths.conditions.all()));
-  });
-
-  it('byName', () => {
-    expect(urls.conditions.byName({ namespace, conditionName })).toEqual(
-      generatePath(paths.conditions.byName(), {
-        namespace,
-        conditionName
-      })
-    );
-  });
-
-  it('byNamespace', () => {
-    expect(urls.conditions.byNamespace({ namespace })).toEqual(
-      generatePath(paths.conditions.byNamespace(), { namespace })
     );
   });
 });
@@ -202,37 +180,6 @@ describe('kubernetesResources', () => {
   });
 });
 
-describe('pipelineResources', () => {
-  it('all', () => {
-    expect(urls.pipelineResources.all()).toEqual(
-      generatePath(paths.pipelineResources.all())
-    );
-  });
-
-  it('byName', () => {
-    expect(
-      urls.pipelineResources.byName({ namespace, pipelineResourceName })
-    ).toEqual(
-      generatePath(paths.pipelineResources.byName(), {
-        namespace,
-        pipelineResourceName
-      })
-    );
-  });
-
-  it('byNamespace', () => {
-    expect(urls.pipelineResources.byNamespace({ namespace })).toEqual(
-      generatePath(paths.pipelineResources.byNamespace(), { namespace })
-    );
-  });
-
-  it('create', () => {
-    expect(urls.pipelineResources.create()).toEqual(
-      generatePath(paths.pipelineResources.create())
-    );
-  });
-});
-
 describe('pipelineRuns', () => {
   it('all', () => {
     expect(urls.pipelineRuns.all()).toEqual(
@@ -281,6 +228,13 @@ describe('pipelines', () => {
 });
 
 describe('rawCRD', () => {
+  it('all', () => {
+    const type = 'tasks';
+    expect(urls.rawCRD.all({ type })).toEqual(
+      generatePath(paths.rawCRD.all(), { type })
+    );
+  });
+
   it('byNamespace', () => {
     const type = 'tasks';
     const name = taskName;
@@ -294,6 +248,27 @@ describe('rawCRD', () => {
     const name = taskName;
     expect(urls.rawCRD.cluster({ type, name })).toEqual(
       generatePath(paths.rawCRD.cluster(), { type, name })
+    );
+  });
+});
+
+describe('customRuns', () => {
+  it('all', () => {
+    expect(urls.customRuns.all()).toEqual(generatePath(paths.customRuns.all()));
+  });
+
+  it('byName', () => {
+    expect(urls.customRuns.byName({ namespace, runName })).toEqual(
+      generatePath(paths.customRuns.byName(), {
+        namespace,
+        runName
+      })
+    );
+  });
+
+  it('byNamespace', () => {
+    expect(urls.customRuns.byNamespace({ namespace })).toEqual(
+      generatePath(paths.customRuns.byNamespace(), { namespace })
     );
   });
 });

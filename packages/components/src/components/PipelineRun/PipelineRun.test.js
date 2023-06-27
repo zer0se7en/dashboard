@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -39,10 +39,6 @@ it('PipelineRunContainer handles init step failures', async () => {
     },
     spec: {
       params: {},
-      resources: {
-        inputs: {},
-        outputs: {}
-      },
       taskSpec: {}
     },
     status: {
@@ -60,7 +56,7 @@ it('PipelineRunContainer handles init step failures', async () => {
       name: pipelineRunName
     },
     status: {
-      taskRuns: []
+      taskRuns: [] // TODO: remove after TEP-0100 feature flag 'embedded-status' is removed
     }
   };
 
@@ -88,10 +84,6 @@ it('PipelineRunContainer handles init step failures for retry', async () => {
     },
     spec: {
       params: {},
-      resources: {
-        inputs: {},
-        outputs: {}
-      },
       taskSpec: {}
     },
     status: {
@@ -129,7 +121,11 @@ it('PipelineRunContainer handles init step failures for retry', async () => {
       name: pipelineRunName
     },
     status: {
-      taskRuns: []
+      childReferences: [
+        {
+          name: taskRunName
+        }
+      ]
     }
   };
 

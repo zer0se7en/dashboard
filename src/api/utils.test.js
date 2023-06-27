@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -17,6 +17,8 @@ import * as comms from './comms';
 import * as utils from './utils';
 import {
   getQueryParams,
+  removeSystemAnnotations,
+  removeSystemLabels,
   useCollection,
   useResource,
   useWebSocket
@@ -156,7 +158,7 @@ describe('useWebSocket', () => {
     const existingResource = { metadata: { uid: 'existing-id' } };
     const newResource = { kind, metadata: { uid: 'new-uid' } };
 
-    queryClient.setQueryData(kind, () => ({
+    queryClient.setQueryData([kind], () => ({
       items: [existingResource],
       metadata: {}
     }));
@@ -178,7 +180,7 @@ describe('useWebSocket', () => {
         })
       });
     });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith(kind);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith([kind]);
   });
 
   it('should handle DELETED events', () => {
@@ -199,7 +201,7 @@ describe('useWebSocket', () => {
       metadata: { name: otherName, namespace, uid: 'existing-id-3' }
     };
 
-    queryClient.setQueryData(kind, () => ({
+    queryClient.setQueryData([kind], () => ({
       items: [resource1, resource2, resource3],
       metadata: {}
     }));
@@ -224,7 +226,7 @@ describe('useWebSocket', () => {
         })
       });
     });
-    expect(queryClient.getQueryData(kind)).toEqual({
+    expect(queryClient.getQueryData([kind])).toEqual({
       items: [resource1, resource3],
       metadata: {}
     });
@@ -256,7 +258,7 @@ describe('useWebSocket', () => {
       metadata: { ...existingResource.metadata, resourceVersion: '11' }
     };
 
-    queryClient.setQueryData(kind, () => ({
+    queryClient.setQueryData([kind], () => ({
       items: [existingResource],
       metadata: {}
     }));
@@ -276,7 +278,7 @@ describe('useWebSocket', () => {
         })
       });
     });
-    expect(queryClient.getQueryData(kind)).toEqual({
+    expect(queryClient.getQueryData([kind])).toEqual({
       items: [existingResource],
       metadata: {}
     });
@@ -294,7 +296,7 @@ describe('useWebSocket', () => {
         })
       });
     });
-    expect(queryClient.getQueryData(kind)).toEqual({
+    expect(queryClient.getQueryData([kind])).toEqual({
       items: [updatedResource],
       metadata: {}
     });
@@ -310,7 +312,7 @@ describe('useWebSocket', () => {
       metadata: { uid: 'existing-id' }
     };
 
-    queryClient.setQueryData(kind, () => ({
+    queryClient.setQueryData([kind], () => ({
       items: [existingResource],
       metadata: {}
     }));
@@ -328,7 +330,7 @@ describe('useWebSocket', () => {
         })
       });
     });
-    expect(queryClient.getQueryData(kind)).toEqual({
+    expect(queryClient.getQueryData([kind])).toEqual({
       items: [existingResource],
       metadata: {}
     });
@@ -338,7 +340,7 @@ describe('useWebSocket', () => {
         type: 'non-message-event'
       });
     });
-    expect(queryClient.getQueryData(kind)).toEqual({
+    expect(queryClient.getQueryData([kind])).toEqual({
       items: [existingResource],
       metadata: {}
     });
@@ -479,4 +481,41 @@ describe('setLogTimestampsEnabled', () => {
     utils.setLogTimestampsEnabled(false);
     expect(localStorage.getItem('tkn-logs-timestamps')).toEqual('false');
   });
+});
+
+it('removeSystemAnnotations', () => {
+  const customAnnotation = 'myCustomAnnotation';
+  const kubectlAnnotation = 'kubectl.kubernetes.io/last-applied-configuration';
+  const tektonAnnotation = 'tekton.dev/foo';
+  const resource = {
+    metadata: {
+      annotations: {
+        [tektonAnnotation]: 'true',
+        [customAnnotation]: 'true',
+        [kubectlAnnotation]: 'true'
+      }
+    }
+  };
+  removeSystemAnnotations(resource);
+
+  expect(resource.metadata.annotations[customAnnotation]).toBeDefined();
+  expect(resource.metadata.annotations[tektonAnnotation]).toBeUndefined();
+  expect(resource.metadata.annotations[kubectlAnnotation]).toBeUndefined();
+});
+
+it('removeSystemLabels', () => {
+  const customLabel = 'myCustomLabel';
+  const tektonLabel = 'tekton.dev/foo';
+  const resource = {
+    metadata: {
+      labels: {
+        [tektonLabel]: 'true',
+        [customLabel]: 'true'
+      }
+    }
+  };
+  removeSystemLabels(resource);
+
+  expect(resource.metadata.labels[customLabel]).toBeDefined();
+  expect(resource.metadata.labels[tektonLabel]).toBeUndefined();
 });

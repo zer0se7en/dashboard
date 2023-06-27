@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,21 +11,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React, { useRef, useState } from 'react';
-import { PipelineRun, RunAction } from '@tektoncd/dashboard-components';
+import React, { useEffect, useRef, useState } from 'react';
+import { Actions, PipelineRun } from '@tektoncd/dashboard-components';
 import {
+  getStatus,
   getTaskRunsWithPlaceholders,
+  isPending,
+  isRunning,
   labels as labelConstants,
-  pipelineRunStatuses,
+  preferences,
   queryParams as queryParamConstants,
   urls,
   useTitleSync
 } from '@tektoncd/dashboard-utils';
-import { InlineNotification } from 'carbon-components-react';
-import { Link, useHistory, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import {
+  InlineNotification,
+  RadioTile,
+  TileGroup
+} from 'carbon-components-react';
+import { Link } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams
+} from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 
 import {
+  cancelPipelineRun,
+  deletePipelineRun,
   rerunPipelineRun,
   startPipelineRun,
   useClusterTasks,
@@ -39,18 +53,19 @@ import {
   useTaskRuns,
   useTasks
 } from '../../api';
-
 import {
   getLogsRetriever,
   getLogsToolbar,
   getViewChangeHandler
 } from '../../utils';
+import { NotFound } from '..';
 
 const { PIPELINE_TASK, RETRY, STEP, VIEW } = queryParamConstants;
 
-export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
-  const history = useHistory();
+export /* istanbul ignore next */ function PipelineRunContainer() {
+  const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   const params = useParams();
 
   const { namespace, pipelineRunName } = params;
@@ -69,11 +84,25 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   const isLogStreamingEnabled = useIsLogStreamingEnabled();
   const isReadOnly = useIsReadOnly();
   const [isUsingExternalLogs, setIsUsingExternalLogs] = useState(false);
+  const [cancelStatus, setCancelStatus] = useState('Cancelled');
 
   useTitleSync({
     page: 'PipelineRun',
     resourceName: pipelineRunName
   });
+
+  useEffect(() => {
+    const savedCancelStatus = localStorage.getItem(
+      preferences.CANCEL_STATUS_KEY
+    );
+    if (savedCancelStatus) {
+      setCancelStatus(savedCancelStatus);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(preferences.CANCEL_STATUS_KEY, cancelStatus);
+  }, [cancelStatus]);
 
   const {
     data: pipelineRun,
@@ -100,7 +129,7 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
     useClusterTasks({});
 
   const pipelineName = pipelineRun?.spec.pipelineRef?.name;
-  const { data: pipeline, isLoading: isLoadingPipeline } = usePipeline(
+  const { data: pipeline, isInitialLoading: isLoadingPipeline } = usePipeline(
     { name: pipelineName, namespace },
     { enabled: !!pipelineName }
   );
@@ -118,15 +147,7 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   function getSelectedTaskId(pipelineTaskName, retry) {
     const taskRun = taskRuns.find(
       ({ metadata }) =>
-        metadata.labels &&
-        ((metadata.labels[labelConstants.CONDITION_CHECK] &&
-          metadata.labels[labelConstants.CONDITION_CHECK] ===
-            pipelineTaskName) ||
-          // the `pipelineTask` label is present on both TaskRuns (the owning
-          // TaskRun and the TaskRun created for the condition check), ensure
-          // we only match on the owning TaskRun here and not another condition
-          (!metadata.labels[labelConstants.CONDITION_CHECK] &&
-            metadata.labels[labelConstants.PIPELINE_TASK] === pipelineTaskName))
+        metadata.labels?.[labelConstants.PIPELINE_TASK] === pipelineTaskName
     );
 
     if (!taskRun) {
@@ -145,10 +166,7 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   function getSelectedTaskRun(selectedTaskId) {
     const lookup = taskRuns.reduce((acc, taskRun) => {
       const { labels, uid } = taskRun.metadata;
-      const pipelineTaskName =
-        labels &&
-        (labels[labelConstants.CONDITION_CHECK] ||
-          labels[labelConstants.PIPELINE_TASK]);
+      const pipelineTaskName = labels?.[labelConstants.PIPELINE_TASK];
       const { podName, retriesStatus } = taskRun.status || {};
       acc[uid + podName] = {
         pipelineTaskName,
@@ -198,7 +216,249 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
     }
 
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    if (currentPipelineTaskName) {
+      navigate(browserURL);
+    } else {
+      // auto-selecting task & step on first load
+      navigate(browserURL, { replace: true });
+    }
+  }
+
+  function cancel() {
+    // use value from localStorage to avoid stale value from closure
+    const savedCancelStatus = localStorage.getItem(
+      preferences.CANCEL_STATUS_KEY
+    );
+    const { name, namespace: resourceNamespace } = pipelineRun.metadata;
+    cancelPipelineRun({
+      name,
+      namespace: resourceNamespace,
+      status: savedCancelStatus
+    }).catch(err => {
+      err.response.text().then(text => {
+        const statusCode = err.response.status;
+        let errorMessage = `error code ${statusCode}`;
+        if (text) {
+          errorMessage = `${text} (error code ${statusCode})`;
+        }
+        setShowRunActionNotification({ kind: 'error', message: errorMessage });
+      });
+    });
+  }
+
+  function deleteRun() {
+    const { name, namespace: resourceNamespace } = pipelineRun.metadata;
+    deletePipelineRun({ name, namespace: resourceNamespace })
+      .then(() => {
+        navigate(urls.pipelineRuns.byNamespace({ namespace }));
+      })
+      .catch(err => {
+        err.response.text().then(text => {
+          const statusCode = err.response.status;
+          let errorMessage = `error code ${statusCode}`;
+          if (text) {
+            errorMessage = `${text} (error code ${statusCode})`;
+          }
+          setShowRunActionNotification({
+            kind: 'error',
+            message: errorMessage
+          });
+        });
+      });
+  }
+
+  function rerun() {
+    rerunPipelineRun(pipelineRun)
+      .then(newRun => {
+        setShowRunActionNotification({
+          kind: 'success',
+          logsURL: urls.pipelineRuns.byName({
+            namespace,
+            pipelineRunName: newRun.metadata.name
+          }),
+          message: intl.formatMessage({
+            id: 'dashboard.rerun.triggered',
+            defaultMessage: 'Triggered rerun'
+          })
+        });
+      })
+      .catch(rerunError => {
+        setShowRunActionNotification({
+          kind: 'error',
+          message: intl.formatMessage(
+            {
+              id: 'dashboard.rerun.error',
+              defaultMessage:
+                'An error occurred when rerunning {runName}: check the dashboard logs for details. Status code: {statusCode}'
+            },
+            {
+              runName: pipelineRun.metadata.name,
+              statusCode: rerunError.response.status
+            }
+          )
+        });
+      });
+  }
+
+  function editAndRun() {
+    navigate(
+      `${urls.pipelineRuns.create()}?mode=yaml&pipelineRunName=${
+        pipelineRun.metadata.name
+      }&namespace=${pipelineRun.metadata.namespace}`
+    );
+  }
+
+  function pipelineRunActions() {
+    if (isReadOnly) {
+      return [];
+    }
+
+    return [
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.rerun.actionText',
+          defaultMessage: 'Rerun'
+        }),
+        action: rerun,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return isPending(reason, status);
+        }
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.editAndRun.actionText',
+          defaultMessage: 'Edit and run'
+        }),
+        action: editAndRun
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.startPipelineRun.actionText',
+          defaultMessage: 'Start'
+        }),
+        action: startPipelineRun,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return !isPending(reason, status);
+        }
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.cancelPipelineRun.actionText',
+          defaultMessage: 'Stop'
+        }),
+        action: cancel,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return !isRunning(reason, status) && !isPending(reason, status);
+        },
+        modalProperties: {
+          heading: intl.formatMessage({
+            id: 'dashboard.cancelPipelineRun.heading',
+            defaultMessage: 'Stop PipelineRun'
+          }),
+          primaryButtonText: intl.formatMessage({
+            id: 'dashboard.cancelPipelineRun.primaryText',
+            defaultMessage: 'Stop PipelineRun'
+          }),
+          body: resource => (
+            <>
+              <p>
+                {intl.formatMessage(
+                  {
+                    id: 'dashboard.cancelPipelineRun.body',
+                    defaultMessage:
+                      'Are you sure you would like to stop PipelineRun {name}?'
+                  },
+                  { name: resource.metadata.name }
+                )}
+              </p>
+              <TileGroup
+                legend={intl.formatMessage({
+                  id: 'dashboard.tableHeader.status',
+                  defaultMessage: 'Status'
+                })}
+                name="cancelStatus-group"
+                valueSelected={cancelStatus}
+                onChange={status => setCancelStatus(status)}
+              >
+                <RadioTile light name="cancelStatus" value="Cancelled">
+                  <span>Cancelled</span>
+                  <p className="tkn--tile--description">
+                    {intl.formatMessage({
+                      id: 'dashboard.cancelPipelineRun.cancelled.description',
+                      defaultMessage:
+                        'Interrupt any currently executing tasks and skip finally tasks'
+                    })}
+                  </p>
+                </RadioTile>
+                <RadioTile
+                  light
+                  name="cancelStatus"
+                  value="CancelledRunFinally"
+                >
+                  <span>CancelledRunFinally</span>
+                  <p className="tkn--tile--description">
+                    {intl.formatMessage({
+                      id: 'dashboard.cancelPipelineRun.cancelledRunFinally.description',
+                      defaultMessage:
+                        'Interrupt any currently executing non-finally tasks, then execute finally tasks'
+                    })}
+                  </p>
+                </RadioTile>
+                <RadioTile light name="cancelStatus" value="StoppedRunFinally">
+                  <span>StoppedRunFinally</span>
+                  <p className="tkn--tile--description">
+                    {intl.formatMessage({
+                      id: 'dashboard.cancelPipelineRun.stoppedRunFinally.description',
+                      defaultMessage:
+                        'Allow any currently executing tasks to complete but do not schedule any new non-finally tasks, then execute finally tasks'
+                    })}
+                  </p>
+                </RadioTile>
+              </TileGroup>
+            </>
+          )
+        }
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.actions.deleteButton',
+          defaultMessage: 'Delete'
+        }),
+        action: deleteRun,
+        danger: true,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return isRunning(reason, status);
+        },
+        hasDivider: true,
+        modalProperties: {
+          danger: true,
+          heading: intl.formatMessage(
+            {
+              id: 'dashboard.deleteResources.heading',
+              defaultMessage: 'Delete {kind}'
+            },
+            { kind: 'PipelineRun' }
+          ),
+          primaryButtonText: intl.formatMessage({
+            id: 'dashboard.actions.deleteButton',
+            defaultMessage: 'Delete'
+          }),
+          body: resource =>
+            intl.formatMessage(
+              {
+                id: 'dashboard.deletePipelineRun.body',
+                defaultMessage:
+                  'Are you sure you would like to delete PipelineRun {name}?'
+              },
+              { name: resource.metadata.name }
+            )
+        }
+      }
+    ];
   }
 
   const selectedTaskId = getSelectedTaskId(
@@ -224,61 +484,32 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
     { enabled: !!podName && view === 'pod' }
   );
 
+  const isLoading =
+    isLoadingPipelineRun ||
+    isLoadingTaskRuns ||
+    isLoadingTasks ||
+    isLoadingClusterTasks ||
+    isLoadingPipeline;
+
+  if (!isLoading && (pipelineRunError || !pipelineRun)) {
+    return (
+      <NotFound
+        suggestions={[
+          {
+            text: 'PipelineRuns',
+            to: urls.pipelineRuns.byNamespace({ namespace })
+          }
+        ]}
+      />
+    );
+  }
+
   let podDetails;
   if (!currentSelectedStepId) {
     podDetails = (events || pod) && { events, resource: pod };
   }
 
-  if (!pipelineRun) {
-    return (
-      <PipelineRun
-        error={intl.formatMessage({
-          id: 'dashboard.pipelineRun.notFound',
-          defaultMessage: 'PipelineRun not found'
-        })}
-        loading={false}
-      />
-    );
-  }
-
-  if (!pipelineRun.status) {
-    pipelineRun.status = {
-      taskRuns: []
-    };
-  }
-  if (!pipelineRun.status.taskRuns) {
-    pipelineRun.status.taskRuns = [];
-  }
-
-  let runAction = null;
-
-  if (!isReadOnly) {
-    if (pipelineRun.spec.status !== pipelineRunStatuses.PENDING) {
-      runAction = (
-        <RunAction
-          action="rerun"
-          getURL={({ name, namespace: resourceNamespace }) =>
-            urls.pipelineRuns.byName({
-              namespace: resourceNamespace,
-              pipelineRunName: name
-            })
-          }
-          run={pipelineRun}
-          runaction={rerunPipelineRun}
-          showNotification={value => setShowRunActionNotification(value)}
-        />
-      );
-    } else {
-      runAction = (
-        <RunAction
-          action="start"
-          run={pipelineRun}
-          runaction={startPipelineRun}
-          showNotification={value => setShowRunActionNotification(value)}
-        />
-      );
-    }
-  }
+  const runActions = pipelineRunActions();
 
   return (
     <>
@@ -316,13 +547,7 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
           onFallback: setIsUsingExternalLogs
         })}
         handleTaskSelected={handleTaskSelected}
-        loading={
-          isLoadingPipelineRun ||
-          isLoadingTaskRuns ||
-          isLoadingTasks ||
-          isLoadingClusterTasks ||
-          isLoadingPipeline
-        }
+        loading={isLoading}
         getLogsToolbar={toolbarParams =>
           getLogsToolbar({
             ...toolbarParams,
@@ -331,13 +556,16 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
           })
         }
         maximizedLogsContainer={maximizedLogsContainer.current}
-        onViewChange={getViewChangeHandler({ history, location })}
+        onViewChange={getViewChangeHandler({ location, navigate })}
         pipelineRun={pipelineRun}
         pod={podDetails}
-        runaction={runAction}
+        runActions={
+          runActions.length ? (
+            <Actions items={runActions} kind="button" resource={pipelineRun} />
+          ) : null
+        }
         selectedStepId={currentSelectedStepId}
         selectedTaskId={selectedTaskId}
-        showIO
         taskRuns={taskRuns}
         tasks={tasks.concat(clusterTasks)}
         view={view}
@@ -346,4 +574,4 @@ export /* istanbul ignore next */ function PipelineRunContainer({ intl }) {
   );
 }
 
-export default injectIntl(PipelineRunContainer);
+export default PipelineRunContainer;

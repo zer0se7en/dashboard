@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,7 +14,7 @@ limitations under the License.
 import React from 'react';
 import { fireEvent } from '@testing-library/react';
 
-import { render, renderWithRouter } from '../../utils/test';
+import { render } from '../../utils/test';
 import TaskRunDetails from './TaskRunDetails';
 
 describe('TaskRunDetails', () => {
@@ -38,7 +38,7 @@ describe('TaskRunDetails', () => {
     const paramValue = 'v';
     const params = [{ name: paramKey, value: paramValue }];
     const description = 'param_description';
-    const { queryByText } = render(
+    const { queryByLabelText, queryByText } = render(
       <TaskRunDetails
         task={{
           metadata: 'task',
@@ -51,6 +51,7 @@ describe('TaskRunDetails', () => {
     expect(queryByText(taskRunName)).toBeTruthy();
     expect(queryByText(paramKey)).toBeTruthy();
     expect(queryByText(paramValue)).toBeTruthy();
+    fireEvent.click(queryByLabelText('Description'));
     expect(queryByText(description)).toBeTruthy();
   });
 
@@ -61,7 +62,7 @@ describe('TaskRunDetails', () => {
     const paramValue = 'v';
     const params = [{ name: paramKey, value: paramValue }];
     const description = 'param_description';
-    const { queryByText } = render(
+    const { queryByLabelText, queryByText } = render(
       <TaskRunDetails
         taskRun={{
           metadata: { name: taskRunName },
@@ -76,6 +77,7 @@ describe('TaskRunDetails', () => {
 
     expect(queryByText(paramKey)).toBeTruthy();
     expect(queryByText(paramValue)).toBeTruthy();
+    fireEvent.click(queryByLabelText('Description'));
     expect(queryByText(description)).toBeTruthy();
   });
 
@@ -88,7 +90,6 @@ describe('TaskRunDetails', () => {
     const { queryByText } = render(<TaskRunDetails taskRun={taskRun} />);
     expect(queryByText(/parameters/i)).toBeFalsy();
     expect(queryByText(/results/i)).toBeFalsy();
-    expect(queryByText(/resources/i)).toBeFalsy();
     expect(queryByText(/pod/i)).toBeFalsy();
     expect(queryByText(/status/i)).toBeTruthy();
   });
@@ -116,7 +117,7 @@ describe('TaskRunDetails', () => {
       spec: {},
       status: { taskResults: [{ name: resultName, value: 'hello' }] }
     };
-    const { queryByText } = render(
+    const { queryByLabelText, queryByText } = render(
       <TaskRunDetails
         task={{
           metadata: 'task',
@@ -129,6 +130,7 @@ describe('TaskRunDetails', () => {
     expect(queryByText(/results/i)).toBeTruthy();
     expect(queryByText(/message/)).toBeTruthy();
     expect(queryByText(/hello/)).toBeTruthy();
+    fireEvent.click(queryByLabelText('Description'));
     expect(queryByText(description)).toBeTruthy();
   });
 
@@ -142,15 +144,24 @@ describe('TaskRunDetails', () => {
       },
       status: { taskResults: [{ name: resultName, value: 'hello' }] }
     };
-    const { queryByText } = render(
+    const { queryByLabelText, queryByText } = render(
       <TaskRunDetails taskRun={taskRun} view="results" />
     );
+    fireEvent.click(queryByLabelText('Description'));
     expect(queryByText(description)).toBeTruthy();
   });
 
   it('renders pod', () => {
-    const events = 'fake-events';
-    const pod = 'fake-pod';
+    const eventName = 'fake_event';
+    const podName = 'fake_pod';
+    const eventsManagedFields = 'fake_events_managedFields';
+    const podManagedFields = 'fake_pod_managedFields';
+    const events = [
+      { metadata: { name: eventName, managedFields: eventsManagedFields } }
+    ];
+    const pod = {
+      metadata: { name: podName, managedFields: podManagedFields }
+    };
     const taskRun = {
       metadata: { name: 'task-run-name' },
       spec: {},
@@ -172,59 +183,63 @@ describe('TaskRunDetails', () => {
     );
     expect(queryByText('Pod')).toBeTruthy();
     expect(queryByText('Resource')).toBeTruthy();
-    expect(queryByText(pod)).toBeTruthy();
+    expect(queryByText(podName)).toBeTruthy();
+    expect(queryByText(podManagedFields)).toBeFalsy();
     expect(queryByText('Events')).toBeTruthy();
     fireEvent.click(queryByText('Events'));
-    expect(queryByText(events)).toBeTruthy();
+    expect(queryByText(eventName)).toBeTruthy();
+    expect(queryByText(eventsManagedFields)).toBeFalsy();
   });
 
-  it('renders both input and output resources', () => {
-    const inputResourceName = 'input-resource';
-    const outputResourceName = 'output-resource';
-    const inputs = [
-      { name: inputResourceName, resourceRef: { name: 'input-resource-ref' } }
-    ];
-    const outputs = [{ name: outputResourceName, resourceSpec: '' }];
-
+  it('renders pod with no events', () => {
+    const podName = 'fake_pod';
+    const pod = { metadata: { name: podName } };
     const taskRun = {
-      metadata: { name: 'task-run-name', namespace: 'namespace-name' },
-      spec: {
-        resources: {
-          inputs,
-          outputs
-        }
-      }
+      metadata: { name: 'task-run-name' },
+      spec: {},
+      status: {}
     };
-
-    const { queryByText } = renderWithRouter(
-      <TaskRunDetails taskRun={taskRun} view="resources" showIO />
+    const { queryByText } = render(
+      <TaskRunDetails
+        pod={{
+          resource: pod
+        }}
+        task={{
+          metadata: 'task',
+          spec: {}
+        }}
+        taskRun={taskRun}
+        view="pod"
+      />
     );
-
-    expect(queryByText(/input resources/i)).toBeTruthy();
-    expect(queryByText(inputResourceName)).toBeTruthy();
-    expect(queryByText(/output resources/i)).toBeTruthy();
-    expect(queryByText(outputResourceName)).toBeTruthy();
+    expect(queryByText('Pod')).toBeTruthy();
+    expect(queryByText('Resource')).toBeFalsy();
+    expect(queryByText(podName)).toBeTruthy();
+    expect(queryByText('Events')).toBeFalsy();
   });
 
-  it('renders output resources', () => {
-    const outputResourceName = 'output-resource';
-    const outputs = [{ name: outputResourceName, resourceSpec: '' }];
-
+  it('renders pod waiting state', () => {
+    const waitingMessage = 'waiting for pod';
     const taskRun = {
-      metadata: { name: 'task-run-name', namespace: 'namespace-name' },
-      spec: {
-        resources: {
-          outputs
-        }
-      }
+      metadata: { name: 'task-run-name' },
+      spec: {},
+      status: {}
     };
-
-    const { queryByText } = renderWithRouter(
-      <TaskRunDetails taskRun={taskRun} view="resources" showIO />
+    const { queryByText } = render(
+      <TaskRunDetails
+        pod={{
+          resource: waitingMessage
+        }}
+        task={{
+          metadata: 'task',
+          spec: {}
+        }}
+        taskRun={taskRun}
+        view="pod"
+      />
     );
-
-    expect(queryByText(/input resources/i)).toBeFalsy();
-    expect(queryByText(/output resources/i)).toBeTruthy();
-    expect(queryByText(outputResourceName)).toBeTruthy();
+    expect(queryByText('Pod')).toBeTruthy();
+    expect(queryByText('Resource')).toBeFalsy();
+    expect(queryByText(waitingMessage)).toBeTruthy();
   });
 });

@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -15,6 +15,7 @@ import { labels } from '@tektoncd/dashboard-utils';
 
 import {
   applyStepTemplate,
+  classNames,
   formatLabels,
   generateId,
   getAddFilterHandler,
@@ -24,7 +25,6 @@ import {
   getGenerateNamePrefixForRerun,
   getParams,
   getPlaceholderTaskRun,
-  getResources,
   getStatus,
   getStatusFilter,
   getStatusFilterHandler,
@@ -37,6 +37,17 @@ import {
   taskRunHasWarning,
   updateUnexecutedSteps
 } from '.';
+
+it('classNames', () => {
+  expect(classNames('foo', 'bar')).toEqual('foo bar');
+  expect(classNames('foo', null, 'bar')).toEqual('foo bar');
+  expect(classNames('foo', { bar: true })).toEqual('foo bar');
+  expect(classNames({ foo: true })).toEqual('foo');
+  expect(classNames({ foo: false })).toEqual('');
+  expect(classNames({ foo: false, bar: true })).toEqual('bar');
+  expect(classNames({ foo: 1 }, { bar: false }, 'three')).toEqual('foo three');
+  expect(classNames(1, 2, 3)).toEqual(''); // numbers are not valid class names
+});
 
 it('getErrorMessage falsy', () => {
   expect(getErrorMessage()).toBeUndefined();
@@ -206,12 +217,12 @@ it('getFilters', () => {
 
 it('getAddFilterHandler', () => {
   const url = 'someURL';
-  const history = { push: jest.fn() };
+  const navigate = jest.fn();
   const location = { pathname: url, search: '?nonFilterQueryParam=someValue' };
-  const handleAddFilter = getAddFilterHandler({ history, location });
+  const handleAddFilter = getAddFilterHandler({ location, navigate });
   const labelFilters = ['foo1=bar1', 'foo2=bar2'];
   handleAddFilter(labelFilters);
-  expect(history.push).toHaveBeenCalledWith(
+  expect(navigate).toHaveBeenCalledWith(
     `${url}?nonFilterQueryParam=someValue&labelSelector=${encodeURIComponent(
       'foo1=bar1,foo2=bar2'
     )}`
@@ -222,14 +233,14 @@ describe('getDeleteFilterHandler', () => {
   it('should redirect to unfiltered URL if no filters remain', () => {
     const search = `?labelSelector=${encodeURIComponent('foo=bar')}`;
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     handleDeleteFilter('foo=bar');
-    expect(history.push).toHaveBeenCalledWith(url);
+    expect(navigate).toHaveBeenCalledWith(url);
   });
 
   it('should correctly remove a filter from the URL', () => {
@@ -237,14 +248,14 @@ describe('getDeleteFilterHandler', () => {
       'foo1=bar1,foo2=bar2'
     )}`;
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     handleDeleteFilter('foo1=bar1');
-    expect(history.push).toHaveBeenCalledWith(
+    expect(navigate).toHaveBeenCalledWith(
       `${url}?labelSelector=${encodeURIComponent('foo2=bar2')}`
     );
   });
@@ -276,57 +287,75 @@ describe('getParams', () => {
   });
 });
 
-describe('getResources', () => {
-  it('supports v1alpha1 structure', () => {
-    const fakeInputResources = { fake: 'inputResources' };
-    const fakeOutputResources = { fake: 'outputResources' };
-    const { inputResources, outputResources } = getResources({
-      inputs: { resources: fakeInputResources },
-      outputs: { resources: fakeOutputResources }
+describe('applyStepTemplate', () => {
+  it('merges fields from the step with the stepTemplate according to the Kubernetes strategic merge patch rules', () => {
+    const stepTemplate = {
+      args: ['some_args'],
+      command: ['sh'],
+      env: [
+        { name: 'env1', value: 'value1' },
+        { name: 'env2', value: 'value2' }
+      ],
+      image: 'alpine',
+      ports: [{ containerPort: 8888 }, { containerPort: 7777, name: 'my-port' }]
+    };
+
+    const step = {
+      args: ['step_args'],
+      env: [
+        { name: 'env1', value: 'step_value1' },
+        { name: 'env3', value: 'step_value3' }
+      ],
+      image: 'ubuntu',
+      ports: [{ containerPort: 7777, name: 'my-step-port' }]
+    };
+
+    expect(applyStepTemplate({ step, stepTemplate })).toEqual({
+      args: step.args,
+      command: stepTemplate.command,
+      env: [step.env[0], stepTemplate.env[1], step.env[1]],
+      image: step.image,
+      ports: [stepTemplate.ports[0], step.ports[0]]
     });
-    expect(inputResources).toEqual(fakeInputResources);
-    expect(outputResources).toEqual(fakeOutputResources);
   });
 
-  it('supports v1beta1 structure', () => {
-    const fakeInputResources = { fake: 'inputResources' };
-    const fakeOutputResources = { fake: 'outputResources' };
-    const { inputResources, outputResources } = getResources({
-      resources: { inputs: fakeInputResources, outputs: fakeOutputResources }
+  it('handles volumeMounts without modifying the stepTemplate', () => {
+    const templateVolumeMounts = [
+      {
+        mountPath: '/tmp/template-mount-path',
+        name: 'template-mount-name'
+      }
+    ];
+    const stepTemplate = {
+      volumeMounts: [...templateVolumeMounts]
+    };
+
+    const step1 = {
+      image: 'ubuntu',
+      script: 'fake_script',
+      volumeMounts: [
+        {
+          mountPath: '/tmp/step-mount-path',
+          name: 'step-mount-name'
+        }
+      ]
+    };
+
+    expect(applyStepTemplate({ step: step1, stepTemplate })).toEqual({
+      image: 'ubuntu',
+      script: 'fake_script',
+      volumeMounts: [
+        {
+          mountPath: '/tmp/template-mount-path',
+          name: 'template-mount-name'
+        },
+        {
+          mountPath: '/tmp/step-mount-path',
+          name: 'step-mount-name'
+        }
+      ]
     });
-    expect(inputResources).toEqual(fakeInputResources);
-    expect(outputResources).toEqual(fakeOutputResources);
-  });
-});
-
-it('applyStepTemplate', () => {
-  const stepTemplate = {
-    args: ['some_args'],
-    command: ['sh'],
-    env: [
-      { name: 'env1', value: 'value1' },
-      { name: 'env2', value: 'value2' }
-    ],
-    image: 'alpine',
-    ports: [{ containerPort: 8888 }, { containerPort: 7777, name: 'my-port' }]
-  };
-
-  const step = {
-    args: ['step_args'],
-    env: [
-      { name: 'env1', value: 'step_value1' },
-      { name: 'env3', value: 'step_value3' }
-    ],
-    image: 'ubuntu',
-    ports: [{ containerPort: 7777, name: 'my-step-port' }]
-  };
-
-  expect(applyStepTemplate({ step, stepTemplate })).toEqual({
-    args: step.args,
-    command: stepTemplate.command,
-    env: [step.env[0], stepTemplate.env[1], step.env[1]],
-    image: step.image,
-    ports: [stepTemplate.ports[0], step.ports[0]]
+    expect(stepTemplate.volumeMounts).toEqual(templateVolumeMounts);
   });
 });
 
@@ -478,14 +507,14 @@ describe('getStatusFilter', () => {
       'foo1=bar1,foo2=bar2'
     )}`;
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = { pathname: url, search };
     const handleDeleteFilter = getDeleteFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     handleDeleteFilter('foo1=bar1');
-    expect(history.push).toHaveBeenCalledWith(
+    expect(navigate).toHaveBeenCalledWith(
       `${url}?labelSelector=${encodeURIComponent('foo2=bar2')}`
     );
   });
@@ -495,47 +524,47 @@ describe('getStatusFilterHandler', () => {
   it('should redirect to unfiltered URL if no status specified', () => {
     const search = '?nonFilterQueryParam=someValue&status=cancelled';
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = { pathname: url, search };
     const setStatusFilter = getStatusFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     setStatusFilter('');
-    expect(history.push).toHaveBeenCalledWith(
+    expect(navigate).toHaveBeenCalledWith(
       `${url}?nonFilterQueryParam=someValue`
     );
   });
 
   it('should set a valid status filter in the URL', () => {
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = {
       pathname: url,
       search: '?nonFilterQueryParam=someValue'
     };
     const setStatusFilter = getStatusFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     const statusFilter = 'cancelled';
     setStatusFilter(statusFilter);
-    expect(history.push).toHaveBeenCalledWith(
+    expect(navigate).toHaveBeenCalledWith(
       `${url}?nonFilterQueryParam=someValue&status=${statusFilter}`
     );
   });
 
   it('should update the status filter in the URL', () => {
     const url = 'someURL';
-    const history = { push: jest.fn() };
+    const navigate = jest.fn();
     const location = { pathname: url, search: '?status=cancelled' };
     const setStatusFilter = getStatusFilterHandler({
-      history,
-      location
+      location,
+      navigate
     });
     const statusFilter = 'completed';
     setStatusFilter(statusFilter);
-    expect(history.push).toHaveBeenCalledWith(`${url}?status=${statusFilter}`);
+    expect(navigate).toHaveBeenCalledWith(`${url}?status=${statusFilter}`);
   });
 });
 
@@ -632,48 +661,17 @@ describe('getPlaceholderTaskRun', () => {
       pipelineTask.name
     );
   });
-
-  it('handles conditions', () => {
-    const condition = {
-      conditionRef: 'someCondition'
-    };
-    const name = 'someTaskName';
-    const task = {
-      metadata: {
-        name
-      },
-      spec: {
-        fake: 'spec'
-      }
-    };
-    const pipelineTask = {
-      name: 'somePipelineTask',
-      taskRef: {
-        name
-      }
-    };
-    const taskRun = getPlaceholderTaskRun({
-      condition,
-      pipelineTask,
-      tasks: [task]
-    });
-    expect(taskRun.spec.taskSpec).toEqual(task.spec);
-    expect(taskRun.metadata.labels[labels.CONDITION_CHECK]).toBeTruthy();
-    expect(taskRun.metadata.labels[labels.CONDITION_NAME]).toBeTruthy();
-  });
 });
 
 describe('getTaskRunsWithPlaceholders', () => {
   it('handles pipeline', () => {
-    const conditionRef = 'someCondition';
     const finallyTaskName = 'someFinallyTaskName';
     const pipelineTaskName = 'somePipelineTaskName';
     const pipeline = {
       spec: {
         tasks: [
           {
-            name: pipelineTaskName,
-            conditions: [{ conditionRef }]
+            name: pipelineTaskName
           }
         ],
         finally: [
@@ -699,22 +697,13 @@ describe('getTaskRunsWithPlaceholders', () => {
         name: 'someFinallyTaskRun'
       }
     };
-    const conditionTaskRun = {
-      metadata: {
-        labels: {
-          [labels.PIPELINE_TASK]: pipelineTaskName,
-          [labels.CONDITION_NAME]: conditionRef
-        }
-      }
-    };
     const taskRuns = [
       finallyTaskRun,
       { metadata: { labels: {}, name: 'junk' } },
-      taskRun,
-      conditionTaskRun
+      taskRun
     ];
     const runs = getTaskRunsWithPlaceholders({ pipeline, taskRuns });
-    expect(runs).toEqual([conditionTaskRun, taskRun, finallyTaskRun]);
+    expect(runs).toEqual([taskRun, finallyTaskRun]);
   });
 
   it('handles inline spec', () => {
@@ -762,15 +751,13 @@ describe('getTaskRunsWithPlaceholders', () => {
   });
 
   it('handles missing TaskRuns', () => {
-    const conditionRef = 'someCondition';
     const finallyTaskName = 'someFinallyTaskName';
     const pipelineTaskName = 'somePipelineTaskName';
     const pipeline = {
       spec: {
         tasks: [
           {
-            name: pipelineTaskName,
-            conditions: [{ conditionRef }]
+            name: pipelineTaskName
           }
         ],
         finally: [
@@ -780,18 +767,13 @@ describe('getTaskRunsWithPlaceholders', () => {
         ]
       }
     };
-    const [conditionTaskRun, taskRun, finallyTaskRun] =
-      getTaskRunsWithPlaceholders({ pipeline, taskRuns: [] });
-    expect(conditionTaskRun.metadata.labels[labels.PIPELINE_TASK]).toEqual(
-      pipelineTaskName
-    );
-    expect(conditionTaskRun.metadata.labels[labels.CONDITION_NAME]).toEqual(
-      conditionRef
-    );
+    const [taskRun, finallyTaskRun] = getTaskRunsWithPlaceholders({
+      pipeline,
+      taskRuns: []
+    });
     expect(taskRun.metadata.labels[labels.PIPELINE_TASK]).toEqual(
       pipelineTaskName
     );
-    expect(taskRun.metadata.labels[labels.CONDITION_NAME]).toBeUndefined();
     expect(finallyTaskRun.metadata.labels[labels.PIPELINE_TASK]).toEqual(
       finallyTaskName
     );

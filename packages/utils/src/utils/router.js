@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -10,7 +10,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router-dom-v5-compat';
 
 function byNamespace({ path = '' } = {}) {
   return `/namespaces/:namespace${path}`;
@@ -42,17 +42,15 @@ export const paths = {
       return '/clustertriggerbindings/:clusterTriggerBindingName';
     }
   },
-  conditions: {
+  customRuns: {
     all() {
-      return '/conditions';
+      return '/customruns';
     },
     byName() {
-      return byNamespace({
-        path: '/conditions/:conditionName'
-      });
+      return byNamespace({ path: '/customruns/:runName' });
     },
     byNamespace() {
-      return byNamespace({ path: '/conditions' });
+      return byNamespace({ path: '/customruns' });
     }
   },
   eventListeners: {
@@ -77,6 +75,17 @@ export const paths = {
   importResources() {
     return '/importresources';
   },
+  interceptors: {
+    all() {
+      return '/interceptors';
+    },
+    byName() {
+      return byNamespace({ path: '/interceptors/:interceptorName' });
+    },
+    byNamespace() {
+      return byNamespace({ path: '/interceptors' });
+    }
+  },
   kubernetesResources: {
     all() {
       return '/:group/:version/:type';
@@ -89,20 +98,6 @@ export const paths = {
     },
     cluster() {
       return '/:group/:version/:type/:name';
-    }
-  },
-  pipelineResources: {
-    all() {
-      return '/pipelineresources';
-    },
-    byName() {
-      return byNamespace({ path: '/pipelineresources/:pipelineResourceName' });
-    },
-    byNamespace() {
-      return byNamespace({ path: '/pipelineresources' });
-    },
-    create() {
-      return '/pipelineresources/create';
     }
   },
   pipelineRuns: {
@@ -135,6 +130,9 @@ export const paths = {
     }
   },
   rawCRD: {
+    all() {
+      return '/:type';
+    },
     byNamespace() {
       return byNamespace({ path: '/:type/:name' });
     },

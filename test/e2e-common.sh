@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2018-2021 The Tekton Authors
+# Copyright 2018-2023 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,14 +29,21 @@ function print_diagnostic_info() {
 }
 
 function install_kustomize() {
-  if ! type "kustomize" > /dev/null; then
+  if ! type "kustomize" > /dev/null 2>&1; then
     echo ">> Installing kustomize"
-    tar=kustomize_v3.6.1_linux_amd64.tar.gz
-    curl -s -O -L https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v3.6.1/$tar
+    tar=kustomize_v4.5.4_linux_amd64.tar.gz
+    curl -s -O -L https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v4.5.4/$tar
     tar xzf ./$tar
 
     cp ./kustomize /usr/local/bin
   fi
+}
+
+function install_buildx() {
+  echo ">> Installing buildx plugin"
+  mkdir -p ~/.docker/cli-plugins \
+     && curl -fsSL https://github.com/docker/buildx/releases/download/v0.10.4/buildx-v0.10.4.linux-amd64 > ~/.docker/cli-plugins/docker-buildx \
+     && chmod u+x ~/.docker/cli-plugins/docker-buildx
 }
 
 function install_pipelines() {
@@ -45,8 +52,8 @@ function install_pipelines() {
   echo ">> Deploying Tekton Pipelines ($version)"
   kubectl apply --filename "https://github.com/tektoncd/pipeline/releases/download/$version/release.yaml" || fail_test "Tekton Pipelines installation failed"
 
-  # Make sure thateveything is cleaned up in the current namespace.
-  for res in pipelineresources tasks pipelines taskruns pipelineruns; do
+  # Make sure that everything is cleaned up in the current namespace.
+  for res in tasks pipelines taskruns pipelineruns; do
     kubectl delete --ignore-not-found=true ${res}.tekton.dev --all
   done
 
@@ -64,95 +71,31 @@ function install_triggers() {
   wait_until_pods_running tekton-pipelines || fail_test "Tekton Triggers did not come up"
 }
 
-function uninstall_pipelines() {
-  local version=$1
-
-  echo ">> Deleting Tekton Pipelines ($version)"
-  kubectl delete --filename "https://github.com/tektoncd/pipeline/releases/download/$version/release.yaml" || fail_test "Tekton Pipelines deletion failed"
-}
-
-function uninstall_triggers() {
-  local version=$1
-
-  echo ">> Deleting Tekton Triggers ($version)"
-  kubectl delete --filename "https://github.com/tektoncd/triggers/releases/download/$version/release.yaml" || fail_test "Tekton Triggers deletion failed"
-}
-
-# Called by `fail_test` (provided by `e2e-tests.sh`) to dump info on test failure
-function dump_extra_cluster_state() {
-  echo ">>> Pipeline controller log:"
-  kubectl -n tekton-pipelines logs $(get_app_pod tekton-pipelines-controller tekton-pipelines)
-  echo ">>> Pipeline webhook log:"
-  kubectl -n tekton-pipelines logs $(get_app_pod tekton-pipelines-webhook tekton-pipelines)
-  echo ">>> Dashboard backend log:"
-  kubectl -n $DASHBOARD_NAMESPACE logs $(get_app_pod tekton-dashboard $DASHBOARD_NAMESPACE)
-
-  echo "Task info"
-  kubectl -n tekton-pipelines get Task -o yaml
-
-  echo "TaskRun info"
-  kubectl -n tekton-pipelines get TaskRun -o yaml
-
-  echo "PipelineRun info"
-  kubectl -n tekton-pipelines get PipelineRun -o yaml
-
-  echo "PipelineRun container info"
-  kubectl -n tekton-pipelines logs -l app=e2e-pipelinerun --all-containers
-}
-
 function wait_dashboard_backend() {
+  local ready=false
   # Wait until deployment is running before checking pods, stops timing error
   for i in {1..30}
   do
     wait=$(kubectl wait --namespace $DASHBOARD_NAMESPACE --for=condition=available deployments/tekton-dashboard --timeout=30s)
     echo "WAIT RESULT: $wait"
     if [ "$wait" = "deployment.apps/tekton-dashboard condition met" ]; then
+      ready=true
       break
     elif [ "$wait" = "deployment.extensions/tekton-dashboard condition met" ]; then
+      ready=true
       break
     else
       sleep 5
     fi
   done
+  if ! $ready; then
+    fail_test "Dashboard deployment not found"
+  fi
   # Wait for pods to be running in the namespaces we are deploying to
   wait_until_pods_running $DASHBOARD_NAMESPACE || fail_test "Dashboard backend did not come up"
 }
 
-function dump_cluster_state() {
-  echo "***************************************"
-  echo "***         E2E TEST FAILED         ***"
-  echo "***    Start of information dump    ***"
-  echo "***************************************"
-  echo ">>> All resources:"
-  kubectl get all --all-namespaces
-  kubectl get tekton --all-namespaces
-  echo ">>> Services:"
-  kubectl get services --all-namespaces
-  echo ">>> Events:"
-  kubectl get events --all-namespaces
-  function_exists dump_extra_cluster_state && dump_extra_cluster_state
-  echo "***************************************"
-  echo "***         E2E TEST FAILED         ***"
-  echo "***     End of information dump     ***"
-  echo "***************************************"
-}
-
-# $1 = File name
-# $2 = HTTP Method
-# $3 = Endpoint
-# Assuming a yaml k8s resource file, do envsubst replacement. This payload is then curled as specified.
-function curl_envsubst_resource() {
-  if [ $# -ne 3 ];then
-    echo "File/HTTP-Method/Endpoint not found."
-    exit 1
-  fi
-  set -x
-  cat "$1" | envsubst | curl -sS -X "$2" --data-binary @- -H "Content-Type: application/yaml" "$3" -H "Tekton-Client: tektoncd/dashboard"
-  set +x
-}
-
 function fail_test() {
   [[ -n $1 ]] && echo "ERROR: $1"
-  # dump_cluster_state
   exit 1
 }

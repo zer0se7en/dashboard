@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,7 +13,7 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React, { Fragment } from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import {
   ClickableTile as CarbonClickableTile,
   InlineNotification,
@@ -26,6 +26,8 @@ import { getErrorMessage, useTitleSync } from '@tektoncd/dashboard-utils';
 import { useProperties } from '../../api';
 
 import tektonLogo from '../../images/tekton-dashboard-color.svg';
+import { ReactComponent as DocsPictogram } from '../../images/assets.svg';
+import { ReactComponent as HubPictogram } from '../../images/user--interface.svg';
 
 function ClickableTile(props) {
   return (
@@ -38,7 +40,8 @@ function ClickableTile(props) {
   );
 }
 
-export function About({ intl }) {
+export function About() {
+  const intl = useIntl();
   useTitleSync({
     page: intl.formatMessage({
       id: 'dashboard.about.title',
@@ -229,33 +232,53 @@ export function About({ intl }) {
           <h2 className="tkn--section-title">
             {intl.formatMessage({
               id: 'dashboard.about.documentation',
-              defaultMessage: 'Documentation'
+              defaultMessage: 'Documentation and resources'
             })}
           </h2>
         </header>
-        <ClickableTile href="https://tekton.dev/docs/overview/">
-          <h3>Overview of Tekton</h3>
-          <p>Components, benefits and caveats, common usage</p>
-          <ArrowIcon />
+        <ClickableTile href="https://tekton.dev/docs/concepts/overview/">
+          <div className="tkn--about-pictogram">
+            <DocsPictogram />
+          </div>
+          <div className="tkn--about-docs-description">
+            <h3>Overview of Tekton</h3>
+            <p>Components, benefits and caveats, common usage</p>
+            <ArrowIcon className="tkn--about-arrow" />
+          </div>
         </ClickableTile>
-        <ClickableTile href="https://tekton.dev/docs/concepts/">
-          <h3>Concepts</h3>
-          <p>Technical information and architecture</p>
-          <ArrowIcon />
+        <ClickableTile href="https://tekton.dev/docs/concepts/concept-model/">
+          <div className="tkn--about-pictogram">
+            <DocsPictogram />
+          </div>
+          <div className="tkn--about-docs-description">
+            <h3>Concept model</h3>
+            <p>Basic Tekton components and data model</p>
+            <ArrowIcon className="tkn--about-arrow" />
+          </div>
         </ClickableTile>
         <ClickableTile href="https://tekton.dev/docs/pipelines/">
-          <h3>Tasks and Pipelines</h3>
-          <p>Building blocks of Tekton CI/CD workflow</p>
-          <ArrowIcon />
+          <div className="tkn--about-pictogram">
+            <DocsPictogram />
+          </div>
+          <div className="tkn--about-docs-description">
+            <h3>Tasks and Pipelines</h3>
+            <p>Building blocks of Tekton CI/CD workflow</p>
+            <ArrowIcon className="tkn--about-arrow" />
+          </div>
         </ClickableTile>
         <ClickableTile href="https://hub.tekton.dev/">
-          <h3>Tekton Hub</h3>
-          <p>Discover, search, and share reusable Tasks and Pipelines</p>
-          <ArrowIcon />
+          <div className="tkn--about-pictogram">
+            <HubPictogram />
+          </div>
+          <div className="tkn--about-docs-description">
+            <h3>Tekton Hub</h3>
+            <p>Discover, search, and share reusable Tasks and Pipelines</p>
+            <ArrowIcon className="tkn--about-arrow" />
+          </div>
         </ClickableTile>
       </section>
     </div>
   );
 }
 
-export default injectIntl(About);
+export default About;

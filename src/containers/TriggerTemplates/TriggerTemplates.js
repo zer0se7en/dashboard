@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,16 +12,41 @@ limitations under the License.
 */
 
 import React from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import { getFilters, urls, useTitleSync } from '@tektoncd/dashboard-utils';
-import { FormattedDate, Table } from '@tektoncd/dashboard-components';
-import { Link as CarbonLink } from 'carbon-components-react';
+import {
+  Link as CustomLink,
+  FormattedDate,
+  Table
+} from '@tektoncd/dashboard-components';
 
 import { ListPageLayout } from '..';
 import { useSelectedNamespace, useTriggerTemplates } from '../../api';
 
-function TriggerTemplates({ intl }) {
+function getFormattedResources(resources) {
+  return resources.map(template => ({
+    id: `${template.metadata.namespace}:${template.metadata.name}`,
+    name: (
+      <Link
+        component={CustomLink}
+        to={urls.triggerTemplates.byName({
+          namespace: template.metadata.namespace,
+          triggerTemplateName: template.metadata.name
+        })}
+        title={template.metadata.name}
+      >
+        {template.metadata.name}
+      </Link>
+    ),
+    namespace: template.metadata.namespace,
+    date: <FormattedDate date={template.metadata.creationTimestamp} relative />
+  }));
+}
+
+function TriggerTemplates() {
+  const intl = useIntl();
   useTitleSync({ page: 'TriggerTemplates' });
 
   const location = useLocation();
@@ -65,53 +90,38 @@ function TriggerTemplates({ intl }) {
     }
   ];
 
-  const triggerTemplatesFormatted = triggerTemplates.map(template => ({
-    id: `${template.metadata.namespace}:${template.metadata.name}`,
-    name: (
-      <Link
-        component={CarbonLink}
-        to={urls.triggerTemplates.byName({
-          namespace: template.metadata.namespace,
-          triggerTemplateName: template.metadata.name
-        })}
-        title={template.metadata.name}
-      >
-        {template.metadata.name}
-      </Link>
-    ),
-    namespace: template.metadata.namespace,
-    date: <FormattedDate date={template.metadata.creationTimestamp} relative />
-  }));
-
   return (
     <ListPageLayout
       error={getError()}
       filters={filters}
+      resources={triggerTemplates}
       title="TriggerTemplates"
     >
-      <Table
-        headers={initialHeaders}
-        rows={triggerTemplatesFormatted}
-        loading={isLoading}
-        selectedNamespace={selectedNamespace}
-        emptyTextAllNamespaces={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.allNamespaces',
-            defaultMessage: 'No matching {kind} found'
-          },
-          { kind: 'TriggerTemplates' }
-        )}
-        emptyTextSelectedNamespace={intl.formatMessage(
-          {
-            id: 'dashboard.emptyState.selectedNamespace',
-            defaultMessage:
-              'No matching {kind} found in namespace {selectedNamespace}'
-          },
-          { kind: 'TriggerTemplates', selectedNamespace }
-        )}
-      />
+      {({ resources }) => (
+        <Table
+          headers={initialHeaders}
+          rows={getFormattedResources(resources)}
+          loading={isLoading}
+          selectedNamespace={selectedNamespace}
+          emptyTextAllNamespaces={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.allNamespaces',
+              defaultMessage: 'No matching {kind} found'
+            },
+            { kind: 'TriggerTemplates' }
+          )}
+          emptyTextSelectedNamespace={intl.formatMessage(
+            {
+              id: 'dashboard.emptyState.selectedNamespace',
+              defaultMessage:
+                'No matching {kind} found in namespace {selectedNamespace}'
+            },
+            { kind: 'TriggerTemplates', selectedNamespace }
+          )}
+        />
+      )}
     </ListPageLayout>
   );
 }
 
-export default injectIntl(TriggerTemplates);
+export default TriggerTemplates;

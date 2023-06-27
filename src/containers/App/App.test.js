@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -21,34 +21,39 @@ import * as PipelinesAPI from '../../api/pipelines';
 
 describe('App', () => {
   beforeEach(() => {
+    jest.spyOn(API, 'useProperties').mockImplementation(() => ({ data: {} }));
     jest
       .spyOn(PipelinesAPI, 'usePipelines')
       .mockImplementation(() => ({ data: [] }));
     jest.spyOn(API, 'useIsReadOnly').mockImplementation(() => true);
     jest.spyOn(API, 'useIsTriggersInstalled').mockImplementation(() => false);
-    jest.spyOn(API, 'useTenantNamespace').mockImplementation(() => undefined);
     jest.spyOn(API, 'useNamespaces').mockImplementation(() => ({ data: [] }));
   });
 
   it('renders successfully in full cluster mode', async () => {
-    const { queryAllByText, queryByText } = render(<App lang="en" />);
+    jest.spyOn(API, 'useTenantNamespace').mockImplementation(() => undefined);
+    const { findAllByText, queryAllByText, queryByText } = render(
+      <App lang="en" />
+    );
 
     await waitFor(() => queryByText('Tekton resources'));
+    await findAllByText('PipelineRuns');
     fireEvent.click(queryAllByText('PipelineRuns')[0]);
 
-    expect(queryByText('Namespace')).toBeTruthy();
     expect(queryByText('Pipelines')).toBeTruthy();
     expect(queryByText('Tasks')).toBeTruthy();
   });
 
   it('renders successfully in single namespace mode', async () => {
     jest.spyOn(API, 'useTenantNamespace').mockImplementation(() => 'fake');
-    const { queryAllByText, queryByText } = render(<App />);
+    const { findAllByText, queryAllByText, queryByText } = render(
+      <App lang="en" />
+    );
 
     await waitFor(() => queryByText('Tekton resources'));
+    await findAllByText('PipelineRuns');
     fireEvent.click(queryAllByText('PipelineRuns')[0]);
 
-    expect(queryByText('Namespaces')).toBeFalsy();
     expect(queryByText('Pipelines')).toBeTruthy();
     expect(queryByText('Tasks')).toBeTruthy();
   });
@@ -65,7 +70,8 @@ describe('App', () => {
   });
 
   it('calls namespaces API in full cluster mode', async () => {
-    jest.spyOn(API, 'getNamespaces');
+    jest.spyOn(API, 'getNamespaces').mockImplementation(() => {});
+    jest.spyOn(API, 'useTenantNamespace').mockImplementation(() => undefined);
     const { queryByText } = render(<App />);
 
     await waitFor(() => queryByText('Tekton resources'));

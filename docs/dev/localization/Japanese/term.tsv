@@ -79,7 +79,6 @@ second	秒
 seconds	秒
 syntax	構文
 overview	概要
-conditions	条件
 not run	未実行
 top-level directory	最上位ディレクトリ
 day	日
@@ -98,8 +97,6 @@ completed	完了
 fail	失敗
 location	場所
 available	利用可能
-output Resources	出力リソース
-input Resources	入力リソース
 input	入力
 Pending	保留
 accepted	使用可能
@@ -154,8 +151,6 @@ Taskruns	Taskrun
 ClusterTask	ClusterTask
 ClusterTasks	ClusterTask
 ClusterTriggerBinding	ClusterTriggerBinding
-PipelineResource	PipelineResource
-PipelineResources	PipelineResource
 Secret	Secret
 Secrets	Secret
 URL	URL

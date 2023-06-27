@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,7 +11,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
 import { action } from '@storybook/addon-actions';
 
 import KeyValueList from './KeyValueList';
@@ -21,55 +20,53 @@ export default {
     legendText: 'Legend Text'
   },
   component: KeyValueList,
-  title: 'Components/KeyValueList'
+  title: 'KeyValueList'
 };
 
-export const Base = args => (
-  <KeyValueList
-    invalidFields={{ '2-key': true, '3-value': true }}
-    onChange={action('onChange')}
-    onAdd={action('onAdd')}
-    onRemove={action('onRemove')}
-    {...args}
-  />
-);
-Base.args = {
-  invalidText: 'There are invalid KeyValue entries.',
-  keyValues: [
-    {
-      id: '0',
-      key: 'foo',
-      keyPlaceholder: 'foo',
-      value: 'bar',
-      valuePlaceholder: 'bar'
-    },
-    {
-      id: '1',
-      key: '',
-      keyPlaceholder: 'key placeholder',
-      value: '',
-      valuePlaceholder: 'value placeholder'
-    },
-    {
-      id: '2',
-      key: 'invalid key',
-      keyPlaceholder: '',
-      value: 'bar',
-      valuePlaceholder: ''
-    },
-    {
-      id: '3',
-      key: 'foo',
-      keyPlaceholder: '',
-      value: 'invalid value',
-      valuePlaceholder: ''
-    }
-  ]
+export const Base = {
+  args: {
+    invalidFields: { '2-key': true, '3-value': true },
+    invalidText: 'There are invalid KeyValue entries.',
+    keyValues: [
+      {
+        id: '0',
+        key: 'foo',
+        keyPlaceholder: 'foo',
+        value: 'bar',
+        valuePlaceholder: 'bar'
+      },
+      {
+        id: '1',
+        key: '',
+        keyPlaceholder: 'key placeholder',
+        value: '',
+        valuePlaceholder: 'value placeholder'
+      },
+      {
+        id: '2',
+        key: 'invalid key',
+        keyPlaceholder: '',
+        value: 'bar',
+        valuePlaceholder: ''
+      },
+      {
+        id: '3',
+        key: 'foo',
+        keyPlaceholder: '',
+        value: 'invalid value',
+        valuePlaceholder: ''
+      }
+    ],
+    onAdd: action('onAdd'),
+    onChange: action('onChange'),
+    onRemove: action('onRemove')
+  }
 };
 
-export const MinKeyValues = args => (
-  <KeyValueList
-    keyValues={[
+export const MinKeyValues = {
+  args: {
+    invalidFields: {},
+    keyValues: [
       {
         id: '0',
         key: 'foo',
@@ -77,15 +74,11 @@ export const MinKeyValues = args => (
         value: 'bar',
         valuePlaceholder: 'bar'
       }
-    ]}
-    invalidFields={{}}
-    onChange={action('onChange')}
-    onAdd={action('onAdd')}
-    onRemove={action('onRemove')}
-    {...args}
-  />
-);
-MinKeyValues.args = {
-  minKeyValues: 1
+    ],
+    minKeyValues: 1,
+    onAdd: action('onAdd'),
+    onChange: action('onChange'),
+    onRemove: action('onRemove')
+  },
+  name: 'minKeyValues'
 };
-MinKeyValues.storyName = 'minKeyValues';

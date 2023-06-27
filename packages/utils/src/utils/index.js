@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,7 +14,6 @@ limitations under the License.
 import { labels as labelConstants } from './constants';
 import { getStatus } from './status';
 
-export { default as buildGraphData } from './buildGraphData';
 export * from './constants';
 export * from './hooks';
 export { paths, urls } from './router';
@@ -22,17 +21,31 @@ export { getStatus } from './status';
 
 export const ALL_NAMESPACES = '*';
 
+export function classNames(...args) {
+  const classes = [];
+  args.forEach(arg => {
+    if (!arg) {
+      return;
+    }
+
+    const argType = typeof arg;
+
+    if (argType === 'string') {
+      classes.push(arg);
+    } else if (argType === 'object') {
+      Object.keys(arg).forEach(key => {
+        if (arg[key]) {
+          classes.push(key);
+        }
+      });
+    }
+  });
+  return classes.join(' ');
+}
+
 /* istanbul ignore next */
 export const copyToClipboard = text => {
-  const input = document.createElement('textarea');
-  input.value = text;
-  input.setAttribute('readonly', '');
-  input.style.position = 'absolute';
-  input.style.top = '-9999px';
-  document.body.appendChild(input);
-  input.select();
-  document.execCommand('copy');
-  document.body.removeChild(input);
+  navigator.clipboard?.writeText(text);
 };
 
 export function getErrorMessage(error) {
@@ -52,10 +65,11 @@ function mergeContainerField({
   step,
   stepTemplate
 }) {
-  const items = stepTemplate[field];
+  let items = stepTemplate[field];
   if (!items) {
     return;
   }
+  items = [...items]; // make a copy so we don't modify stepTemplate
 
   const stepItems = step[field];
   (stepItems || []).forEach(stepItem => {
@@ -194,21 +208,12 @@ export function generateId(prefix) {
   return `${prefix}${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function formatLabels(labelsRaw) {
-  const labels = JSON.stringify(labelsRaw)
-    .replace('{', '')
-    .replace('}', '')
-    .replace(/['"]+/g, '')
-    .replace('$', '');
+export function formatLabels(labels) {
+  if (!labels) {
+    return [];
+  }
 
-  const formattedLabelsToRender = [];
-  const labelsSplitOnComma = labels.split(',');
-  labelsSplitOnComma.forEach(label => {
-    const [key, value] = label.split(':');
-    formattedLabelsToRender.push(`${key}: ${value}`);
-  });
-
-  return formattedLabelsToRender;
+  return Object.entries(labels).map(([key, value]) => `${key}: ${value}`);
 }
 
 // Update the status of steps that follow a step with an error or a running step
@@ -239,16 +244,16 @@ export function getFilters({ search }) {
   return filters;
 }
 
-export function getAddFilterHandler({ history, location }) {
+export function getAddFilterHandler({ location, navigate }) {
   return function handleAddFilter(labelFilters) {
     const queryParams = new URLSearchParams(location.search);
     queryParams.set('labelSelector', labelFilters);
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    navigate(browserURL);
   };
 }
 
-export function getDeleteFilterHandler({ history, location }) {
+export function getDeleteFilterHandler({ location, navigate }) {
   return function handleDeleteFilter(filter) {
     const queryParams = new URLSearchParams(location.search);
     const labelFilters = queryParams.getAll('labelSelector');
@@ -265,16 +270,16 @@ export function getDeleteFilterHandler({ history, location }) {
     const browserURL = location.pathname.concat(
       queryString ? `?${queryString}` : ''
     );
-    history.push(browserURL);
+    navigate(browserURL);
   };
 }
 
-export function getClearFiltersHandler({ history, location }) {
+export function getClearFiltersHandler({ location, navigate }) {
   return function handleClearFilters() {
     const queryParams = new URLSearchParams(location.search);
     queryParams.delete('labelSelector');
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    navigate(browserURL);
   };
 }
 
@@ -295,7 +300,7 @@ export function getStatusFilter({ search }) {
   return status;
 }
 
-export function getStatusFilterHandler({ history, location }) {
+export function getStatusFilterHandler({ location, navigate }) {
   return function setStatusFilter(statusFilter) {
     const queryParams = new URLSearchParams(location.search);
     if (!statusFilter) {
@@ -304,7 +309,7 @@ export function getStatusFilterHandler({ history, location }) {
       queryParams.set('status', statusFilter);
     }
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    navigate(browserURL);
   };
 }
 
@@ -325,13 +330,16 @@ export function runMatchesStatusFilter({ run, statusFilter }) {
       return (
         (status === 'False' &&
           reason !== 'PipelineRunCancelled' &&
+          reason !== 'Cancelled' &&
           reason !== 'TaskRunCancelled') ||
         (status === 'Unknown' && reason === 'PipelineRunCouldntCancel')
       );
     case 'cancelled':
       return (
         status === 'False' &&
-        (reason === 'PipelineRunCancelled' || reason === 'TaskRunCancelled')
+        (reason === 'PipelineRunCancelled' ||
+          reason === 'Cancelled' ||
+          reason === 'TaskRunCancelled')
       );
     case 'completed':
       return status === 'True';
@@ -350,45 +358,22 @@ export function getGenerateNamePrefixForRerun(name) {
 }
 
 /*
-    getParams and getResources below required to support 3rd-party consumers
-    of certain dashboard components (e.g. PipelineRun) while they migrate to
-    the Tekton beta.
+    getParams required to support 3rd-party consumers of certain dashboard
+    components (e.g. PipelineRun) while they migrate to the Tekton beta
 
     Support both the Pipelines beta (0.11+) structure
       {
-        params: ...,
-        resources: {
-          inputs: ...,
-          outputs: ...
-        }
+        params: ...
       }
     and the older alpha (<0.11) structure
       {
         inputs: {
           params: ...,
-          resources: ...
-        },
-        outputs: {
-          resources: ...
         }
       }
  */
 export function getParams({ params, inputs }) {
   return params || (inputs && inputs.params);
-}
-
-export function getResources({ resources, inputs, outputs }) {
-  if (resources) {
-    return {
-      inputResources: resources.inputs,
-      outputResources: resources.outputs
-    };
-  }
-
-  return {
-    inputResources: inputs && inputs.resources,
-    outputResources: outputs && outputs.resources
-  };
 }
 
 /* istanbul ignore next */
@@ -435,31 +420,19 @@ export function getTaskSpecFromTaskRef({ clusterTasks, pipelineTask, tasks }) {
   return definition?.spec || {};
 }
 
-export function getPlaceholderTaskRun({
-  clusterTasks,
-  condition,
-  pipelineTask,
-  tasks
-}) {
+export function getPlaceholderTaskRun({ clusterTasks, pipelineTask, tasks }) {
   const { name: pipelineTaskName, taskSpec } = pipelineTask;
   const specToDisplay =
     taskSpec || getTaskSpecFromTaskRef({ clusterTasks, pipelineTask, tasks });
   const { steps = [] } = specToDisplay;
 
-  const displayName =
-    pipelineTaskName + (condition ? `-${condition.conditionRef}` : '');
-
   return {
     metadata: {
-      name: displayName,
+      name: pipelineTaskName,
       labels: {
-        [labelConstants.PIPELINE_TASK]: pipelineTaskName,
-        ...(condition && {
-          [labelConstants.CONDITION_CHECK]: displayName,
-          [labelConstants.CONDITION_NAME]: condition.conditionRef
-        })
+        [labelConstants.PIPELINE_TASK]: pipelineTaskName
       },
-      uid: `_placeholder_${displayName}`
+      uid: `_placeholder_${pipelineTaskName}`
     },
     spec: {
       taskSpec: specToDisplay
@@ -499,26 +472,10 @@ export function getTaskRunsWithPlaceholders({
 
   const taskRunsToDisplay = [];
   pipelineTasks.forEach(pipelineTask => {
-    if (pipelineTask.conditions) {
-      pipelineTask.conditions.forEach(condition => {
-        const conditionTaskRun = taskRuns.find(
-          taskRun =>
-            taskRun.metadata.labels?.[labelConstants.PIPELINE_TASK] ===
-              pipelineTask.name &&
-            taskRun.metadata.labels?.[labelConstants.CONDITION_NAME] ===
-              condition.conditionRef
-        );
-        taskRunsToDisplay.push(
-          conditionTaskRun || getPlaceholderTaskRun({ pipelineTask, condition })
-        );
-      });
-    }
-
     const realTaskRun = taskRuns.find(
       taskRun =>
         taskRun.metadata.labels?.[labelConstants.PIPELINE_TASK] ===
-          pipelineTask.name &&
-        !taskRun.metadata.labels?.[labelConstants.CONDITION_CHECK]
+        pipelineTask.name
     );
 
     taskRunsToDisplay.push(

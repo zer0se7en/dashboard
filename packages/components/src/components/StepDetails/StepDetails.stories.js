@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -30,34 +30,30 @@ function getLogContainer({ exitCode = 0 } = {}) {
 }
 
 export default {
+  args: {
+    definition: 'this will show the Task.spec or TaskRun.spec.taskSpec',
+    stepName: 'build',
+    taskRun: {}
+  },
   component: StepDetails,
   parameters: {
     backgrounds: {
       default: 'white'
     }
   },
-  title: 'Components/StepDetails'
+  title: 'StepDetails'
 };
 
-export const Base = () => (
-  <StepDetails
-    definition="this will show the Task.spec or TaskRun.spec.taskSpec"
-    logContainer={getLogContainer()}
-    stepName="build"
-    stepStatus={getStepStatus()}
-    taskRun={{}}
-  />
-);
+export const Base = {
+  args: {
+    logContainer: getLogContainer(),
+    stepStatus: getStepStatus()
+  }
+};
 
-export const WithWarning = () => {
-  const exitCode = 1;
-  return (
-    <StepDetails
-      definition="this will show the Task.spec or TaskRun.spec.taskSpec"
-      logContainer={getLogContainer({ exitCode })}
-      stepName="build"
-      stepStatus={getStepStatus({ exitCode })}
-      taskRun={{}}
-    />
-  );
+export const WithWarning = {
+  args: {
+    logContainer: getLogContainer({ exitCode: 1 }),
+    stepStatus: getStepStatus({ exitCode: 1 })
+  }
 };

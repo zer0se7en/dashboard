@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,17 +13,26 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React from 'react';
-import { Link, useHistory, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams
+} from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import { urls, useTitleSync } from '@tektoncd/dashboard-utils';
-import { ResourceDetails, Trigger } from '@tektoncd/dashboard-components';
-import { Link as CarbonLink } from 'carbon-components-react';
+import {
+  Link as CustomLink,
+  ResourceDetails,
+  Trigger
+} from '@tektoncd/dashboard-components';
 
 import { useEventListener } from '../../api';
 import { getViewChangeHandler } from '../../utils';
 
-export function EventListenerContainer({ intl }) {
-  const history = useHistory();
+export function EventListenerContainer() {
+  const intl = useIntl();
+  const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
   const { eventListenerName, namespace } = params;
@@ -55,7 +64,7 @@ export function EventListenerContainer({ intl }) {
     return (
       <>
         {serviceAccountName && (
-          <p>
+          <li>
             <span>
               {intl.formatMessage({
                 id: 'dashboard.eventListener.serviceAccount',
@@ -63,10 +72,10 @@ export function EventListenerContainer({ intl }) {
               })}
             </span>
             {serviceAccountName}
-          </p>
+          </li>
         )}
         {serviceType && (
-          <p>
+          <li>
             <span>
               {intl.formatMessage({
                 id: 'dashboard.eventListener.serviceType',
@@ -74,10 +83,10 @@ export function EventListenerContainer({ intl }) {
               })}
             </span>
             {serviceType}
-          </p>
+          </li>
         )}
         {namespaceSelector?.matchNames?.length ? (
-          <p>
+          <li>
             <span>
               {intl.formatMessage({
                 id: 'dashboard.eventListener.namespaceSelector',
@@ -85,7 +94,7 @@ export function EventListenerContainer({ intl }) {
               })}
             </span>
             {namespaceSelector.matchNames.join(', ')}
-          </p>
+          </li>
         ) : null}
       </>
     );
@@ -109,7 +118,7 @@ export function EventListenerContainer({ intl }) {
               <div className="tkn--trigger-resourcelinks">
                 <span>Trigger:</span>
                 <Link
-                  component={CarbonLink}
+                  component={CustomLink}
                   to={urls.triggers.byName({
                     namespace,
                     triggerName: trigger.triggerRef
@@ -133,7 +142,7 @@ export function EventListenerContainer({ intl }) {
       additionalMetadata={getAdditionalMetadata()}
       error={error}
       loading={isFetching}
-      onViewChange={getViewChangeHandler({ history, location })}
+      onViewChange={getViewChangeHandler({ location, navigate })}
       resource={eventListener}
       view={view}
     >
@@ -142,4 +151,4 @@ export function EventListenerContainer({ intl }) {
   );
 }
 
-export default injectIntl(EventListenerContainer);
+export default EventListenerContainer;

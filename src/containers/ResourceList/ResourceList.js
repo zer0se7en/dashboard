@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,11 +12,15 @@ limitations under the License.
 */
 /* istanbul ignore file */
 import React from 'react';
-import { injectIntl } from 'react-intl';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { useIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom-v5-compat';
 import { getFilters, urls, useTitleSync } from '@tektoncd/dashboard-utils';
-import { FormattedDate, Table } from '@tektoncd/dashboard-components';
-import { Link as CarbonLink } from 'carbon-components-react';
+import {
+  Link as CustomLink,
+  FormattedDate,
+  Table
+} from '@tektoncd/dashboard-components';
 
 import { ListPageLayout } from '..';
 import {
@@ -25,7 +29,8 @@ import {
   useSelectedNamespace
 } from '../../api';
 
-export function ResourceListContainer({ intl }) {
+export function ResourceListContainer() {
+  const intl = useIntl();
   const location = useLocation();
   const { group, namespace: namespaceParam, version, type } = useParams();
 
@@ -40,12 +45,12 @@ export function ResourceListContainer({ intl }) {
     error: apiResourceError,
     isLoading: isLoadingAPIResource
   } = useAPIResource({ group, type, version });
-  const isNamespaced = !isLoadingAPIResource && apiResource.namespaced;
+  const isNamespaced = !isLoadingAPIResource && apiResource?.namespaced;
 
   const {
     data: resources,
     error: resourcesError,
-    isLoading: isLoadingResources
+    isInitialLoading: isLoadingResources
   } = useCustomResources(
     {
       filters,
@@ -55,7 +60,7 @@ export function ResourceListContainer({ intl }) {
       version
     },
     {
-      enabled: !isLoadingAPIResource
+      enabled: !isLoadingAPIResource && !apiResourceError
     }
   );
 
@@ -87,76 +92,78 @@ export function ResourceListContainer({ intl }) {
     <ListPageLayout
       error={getError()}
       filters={filters}
-      hideNamespacesDropdown={!isNamespaced}
+      resources={resources}
       title={`${group}/${version}/${type}`}
     >
-      <Table
-        headers={[
-          {
-            key: 'name',
-            header: intl.formatMessage({
-              id: 'dashboard.tableHeader.name',
-              defaultMessage: 'Name'
-            })
-          },
-          isNamespaced
-            ? {
-                key: 'namespace',
-                header: 'Namespace'
-              }
-            : null,
-          {
-            key: 'createdTime',
-            header: intl.formatMessage({
-              id: 'dashboard.tableHeader.createdTime',
-              defaultMessage: 'Created'
-            })
-          }
-        ].filter(Boolean)}
-        rows={resources.map(resource => {
-          const {
-            creationTimestamp,
-            name,
-            namespace: resourceNamespace,
-            uid
-          } = resource.metadata;
-
-          return {
-            id: uid,
-            name: (
-              <Link
-                component={CarbonLink}
-                to={
-                  resourceNamespace
-                    ? urls.kubernetesResources.byName({
-                        namespace: resourceNamespace,
-                        group,
-                        version,
-                        type,
-                        name
-                      })
-                    : urls.kubernetesResources.cluster({
-                        group,
-                        version,
-                        type,
-                        name
-                      })
+      {({ resources: paginatedResources }) => (
+        <Table
+          headers={[
+            {
+              key: 'name',
+              header: intl.formatMessage({
+                id: 'dashboard.tableHeader.name',
+                defaultMessage: 'Name'
+              })
+            },
+            isNamespaced
+              ? {
+                  key: 'namespace',
+                  header: 'Namespace'
                 }
-                title={name}
-              >
-                {name}
-              </Link>
-            ),
-            namespace: resourceNamespace,
-            createdTime: <FormattedDate date={creationTimestamp} relative />
-          };
-        })}
-        loading={isLoadingAPIResource || isLoadingResources}
-        emptyTextAllNamespaces={emptyText}
-        emptyTextSelectedNamespace={emptyText}
-      />
+              : null,
+            {
+              key: 'createdTime',
+              header: intl.formatMessage({
+                id: 'dashboard.tableHeader.createdTime',
+                defaultMessage: 'Created'
+              })
+            }
+          ].filter(Boolean)}
+          rows={paginatedResources.map(resource => {
+            const {
+              creationTimestamp,
+              name,
+              namespace: resourceNamespace,
+              uid
+            } = resource.metadata;
+
+            return {
+              id: uid,
+              name: (
+                <Link
+                  component={CustomLink}
+                  to={
+                    resourceNamespace
+                      ? urls.kubernetesResources.byName({
+                          namespace: resourceNamespace,
+                          group,
+                          version,
+                          type,
+                          name
+                        })
+                      : urls.kubernetesResources.cluster({
+                          group,
+                          version,
+                          type,
+                          name
+                        })
+                  }
+                  title={name}
+                >
+                  {name}
+                </Link>
+              ),
+              namespace: resourceNamespace,
+              createdTime: <FormattedDate date={creationTimestamp} relative />
+            };
+          })}
+          loading={isLoadingAPIResource || isLoadingResources}
+          emptyTextAllNamespaces={emptyText}
+          emptyTextSelectedNamespace={emptyText}
+        />
+      )}
     </ListPageLayout>
   );
 }
 
-export default injectIntl(ResourceListContainer);
+export default ResourceListContainer;

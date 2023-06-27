@@ -35,6 +35,8 @@ The picture below illustrates the deployed components and interactions between t
 
 ## Installing a working Tekton Dashboard locally from scratch
 
+This walk-through has been tested on Kind v0.15 with Kubernetes v1.25.
+
 If you didn't follow the [Tekton Dashboard walk-through with Kind](./walkthrough-kind.md) yet, start there to get a local cluster with a working Tekton Dashboard installed.
 
 The following steps will focus on getting `oauth2-proxy` installed in your cluster and securing the Tekton Dashboard `Ingress`.
@@ -45,7 +47,7 @@ Before installing `oauth2-proxy`, you will need to create a OAuth App on your Gi
 
 This OAuth App will be used to authenticate users using GitHub.
 
-To create the OAuth App on GitHub, browse https://github.com/settings/developers and click the `New OAuth App` button.
+To create the OAuth App on GitHub, browse https://github.com/settings/developers and click the `Register a new application` button.
 
 Fill in the form and click the `Register application` button:
 - `Application name`: the name of the application
@@ -54,19 +56,21 @@ Fill in the form and click the `Register application` button:
 
 ![Register OAuth application](./walkthrough-oauth2-proxy-register.png)
 
-Once the application is registered, you will obtain a `Client ID` and `Client Secret`.
+Once the application is registered, click the `Generate a new client secret` button.
 
-These will be needed to configure `oauth2-proxy` in the next step.
+Record the `Client ID` and `Client secret` somewhere secure, these will be needed to configure `oauth2-proxy` in the next step.
 
 ![Registered OAuth application](./walkthrough-oauth2-proxy-registered.png)
 
 ## Installing and configuring oauth2-proxy
 
+**Note:** [2022/11/08] This walk-through has been tested with oauth2-proxy 7.2.1 (helm chart version 6.3.0). There is a known issue with the GitHub provider in oauth2-proxy 7.3.0 and later.
+
 Now you have the OAuth application created on GitHub, you can deploy [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) in your cluster.
 
-You will install it using helm. The helm chart used in this guide is hosted on the [helm official repository](https://github.com/helm/charts/tree/master/stable/oauth2-proxy).
+You will install it using helm. The helm chart used in this guide is hosted at https://github.com/oauth2-proxy/manifests.
 
-To install the chart, set the `Client ID` and `Client Secret` you obtained from GitHub and run the command below:
+To install the chart, set the `Client ID` and `Client Secret` you obtained from GitHub and run the commands below:
 
 ```bash
 # CLIENT_ID and CLIENT_SECRET are the Client ID and Client Secret obtained
@@ -74,7 +78,9 @@ To install the chart, set the `Client ID` and `Client Secret` you obtained from 
 CLIENT_ID=__THE_CLIENT_ID_OF_YOUR_GITHUB_OAUTH_APP__
 CLIENT_SECRET=__THE_CLIENT_SECRET_OF_YOUR_GITHUB_OAUTH_APP__
 
-helm upgrade --install --wait --create-namespace --namespace tools oauth2-proxy stable/oauth2-proxy --values - <<EOF
+helm repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+
+helm upgrade --install --wait --create-namespace --namespace tools oauth2-proxy oauth2-proxy/oauth2-proxy --version 6.2.1 --values - <<EOF
 config:
   clientID: $CLIENT_ID
   clientSecret: $CLIENT_SECRET
@@ -177,6 +183,4 @@ To clean up the local kind cluster, follow the [cleaning up instructions](./walk
 
 ---
 
-Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/).
-
-Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+Except as otherwise noted, the content of this page is licensed under the [Creative Commons Attribution 4.0 License](https://creativecommons.org/licenses/by/4.0/). Code samples are licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).

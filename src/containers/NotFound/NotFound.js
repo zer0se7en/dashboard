@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Tekton Authors
+Copyright 2021-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,18 +13,23 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import { Link } from 'react-router-dom';
-import { Link as CarbonLink, Column, Grid, Row } from 'carbon-components-react';
-import { urls } from '@tektoncd/dashboard-utils';
+import { Column, Grid, Row } from 'carbon-components-react';
+import { Link as CustomLink } from '@tektoncd/dashboard-components';
+import { ALL_NAMESPACES, urls } from '@tektoncd/dashboard-utils';
 
+import { useSelectedNamespace } from '../../api';
 import robocat from '../../images/robocat_404.svg';
 
 const smallConfig = { offset: 1, span: 2 };
 const mediumConfig = { offset: 2, span: 4 };
 const largeConfig = { offset: 5, span: 6 };
 
-function NotFound({ intl }) {
+function NotFound({ suggestions = [] }) {
+  const intl = useIntl();
+  const { selectedNamespace: namespace } = useSelectedNamespace();
+
   return (
     <Grid className="tkn--not-found">
       <Row narrow>
@@ -60,24 +65,49 @@ function NotFound({ intl }) {
           </p>
 
           <ul>
+            {suggestions.map(({ text, to }) => (
+              <li key={text}>
+                <Link component={CustomLink} to={to}>
+                  {text}
+                </Link>
+              </li>
+            ))}
             <li>
-              <Link component={CarbonLink} to="/">
+              <Link component={CustomLink} to="/">
                 {intl.formatMessage({
                   id: 'dashboard.home.title',
                   defaultMessage: 'Home'
                 })}
               </Link>
             </li>
-            <li>
-              <Link component={CarbonLink} to={urls.pipelineRuns.all()}>
-                PipelineRuns
-              </Link>
-            </li>
-            <li>
-              <Link component={CarbonLink} to={urls.taskRuns.all()}>
-                TaskRuns
-              </Link>
-            </li>
+            {suggestions.length === 0 ? (
+              <>
+                <li>
+                  <Link
+                    component={CustomLink}
+                    to={
+                      namespace !== ALL_NAMESPACES
+                        ? urls.pipelineRuns.byNamespace({ namespace })
+                        : urls.pipelineRuns.all()
+                    }
+                  >
+                    PipelineRuns
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    component={CustomLink}
+                    to={
+                      namespace !== ALL_NAMESPACES
+                        ? urls.taskRuns.byNamespace({ namespace })
+                        : urls.taskRuns.all()
+                    }
+                  >
+                    TaskRuns
+                  </Link>
+                </li>
+              </>
+            ) : null}
           </ul>
         </Column>
       </Row>
@@ -85,4 +115,4 @@ function NotFound({ intl }) {
   );
 }
 
-export default injectIntl(NotFound);
+export default NotFound;

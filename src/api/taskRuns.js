@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -18,6 +18,9 @@ import { deleteRequest, get, patch, post } from './comms';
 import {
   getQueryParams,
   getTektonAPI,
+  getTektonPipelinesAPIVersion,
+  removeSystemAnnotations,
+  removeSystemLabels,
   useCollection,
   useResource
 } from './utils';
@@ -75,39 +78,33 @@ export function cancelTaskRun({ name, namespace }) {
   return patch(uri, payload);
 }
 
-export function createTaskRun({
-  namespace,
-  taskName,
+export function getTaskRunPayload({
   kind,
   labels,
+  namespace,
+  nodeSelector,
   params,
-  resources,
   serviceAccount,
-  timeout,
-  nodeSelector
+  taskName,
+  taskRunName = `${taskName ? `${taskName}-run` : 'run'}-${Date.now()}`,
+  timeout
 }) {
   const payload = {
-    apiVersion: 'tekton.dev/v1beta1',
+    apiVersion: `tekton.dev/${getTektonPipelinesAPIVersion()}`,
     kind: 'TaskRun',
     metadata: {
-      name: `${taskName}-run-${Date.now()}`,
-      namespace,
-      labels
+      name: taskRunName,
+      namespace
     },
     spec: {
-      params: [],
-      resources: {
-        inputs: [],
-        outputs: []
-      },
       taskRef: {
         name: taskName,
         kind: kind || 'Task'
       }
     }
   };
-  if (nodeSelector) {
-    payload.spec.podTemplate = { nodeSelector };
+  if (labels) {
+    payload.metadata.labels = labels;
   }
   if (params) {
     payload.spec.params = Object.keys(params).map(name => ({
@@ -115,21 +112,8 @@ export function createTaskRun({
       value: params[name]
     }));
   }
-  if (resources && resources.inputs) {
-    payload.spec.resources.inputs = Object.keys(resources.inputs).map(
-      inputName => ({
-        name: inputName,
-        resourceRef: { name: resources.inputs[inputName] }
-      })
-    );
-  }
-  if (resources && resources.outputs) {
-    payload.spec.resources.outputs = Object.keys(resources.outputs).map(
-      outputName => ({
-        name: outputName,
-        resourceRef: { name: resources.outputs[outputName] }
-      })
-    );
+  if (nodeSelector) {
+    payload.spec.podTemplate = { nodeSelector };
   }
   if (serviceAccount) {
     payload.spec.serviceAccountName = serviceAccount;
@@ -137,30 +121,86 @@ export function createTaskRun({
   if (timeout) {
     payload.spec.timeout = timeout;
   }
+
+  return payload;
+}
+
+export function createTaskRun({
+  kind,
+  labels,
+  namespace,
+  nodeSelector,
+  params,
+  serviceAccount,
+  taskName,
+  taskRunName = `${taskName}-run-${Date.now()}`,
+  timeout
+}) {
+  const payload = getTaskRunPayload({
+    kind,
+    labels,
+    namespace,
+    nodeSelector,
+    params,
+    serviceAccount,
+    taskName,
+    taskRunName,
+    timeout
+  });
   const uri = getTektonAPI('taskruns', { namespace });
   return post(uri, payload).then(({ body }) => body);
 }
 
-export function rerunTaskRun(taskRun) {
-  const { annotations, labels, name, namespace } = taskRun.metadata;
+export function createTaskRunRaw({ namespace, payload }) {
+  const uri = getTektonAPI('taskruns', { namespace });
+  return post(uri, payload).then(({ body }) => body);
+}
+
+export function generateNewTaskRunPayload({ taskRun, rerun }) {
+  const { annotations, labels, name, namespace, generateName } =
+    taskRun.metadata;
 
   const payload = deepClone(taskRun);
-  payload.apiVersion = payload.apiVersion || 'tekton.dev/v1beta1';
+  payload.apiVersion =
+    payload.apiVersion || `tekton.dev/${getTektonPipelinesAPIVersion()}`;
   payload.kind = payload.kind || 'TaskRun';
+
+  function getGenerateName() {
+    if (rerun) {
+      return getGenerateNamePrefixForRerun(name);
+    }
+
+    return generateName || `${name}-`;
+  }
+
   payload.metadata = {
-    annotations,
-    generateName: getGenerateNamePrefixForRerun(name),
-    labels: {
-      ...labels,
-      reruns: name
-    },
+    annotations: annotations || {},
+    generateName: getGenerateName(),
+    labels: labels || {},
     namespace
   };
+  if (rerun) {
+    payload.metadata.labels['dashboard.tekton.dev/rerunOf'] = name;
+  }
 
-  delete payload.metadata.labels['tekton.dev/task'];
+  removeSystemAnnotations(payload);
+  removeSystemLabels(payload);
+
+  Object.keys(payload.metadata).forEach(
+    i => payload.metadata[i] === undefined && delete payload.metadata[i]
+  );
 
   delete payload.status;
+
   delete payload.spec?.status;
+  return { namespace, payload };
+}
+
+export function rerunTaskRun(taskRun) {
+  const { namespace, payload } = generateNewTaskRunPayload({
+    taskRun,
+    rerun: true
+  });
 
   const uri = getTektonAPI('taskruns', { namespace });
   return post(uri, payload).then(({ body }) => body);

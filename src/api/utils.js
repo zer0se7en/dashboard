@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,7 +12,7 @@ limitations under the License.
 */
 
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ALL_NAMESPACES } from '@tektoncd/dashboard-utils';
 
 import { createWebSocket, getAPIRoot } from './comms';
@@ -97,6 +97,18 @@ export function getQueryParams({
   return '';
 }
 
+export function isPipelinesV1ResourcesEnabled() {
+  return localStorage.getItem('tkn-pipelines-v1-resources') === 'true';
+}
+
+export function setPipelinesV1ResourcesEnabled(enabled) {
+  localStorage.setItem('tkn-pipelines-v1-resources', enabled);
+}
+
+export function getTektonPipelinesAPIVersion() {
+  return isPipelinesV1ResourcesEnabled() ? 'v1' : 'v1beta1';
+}
+
 export function getTektonAPI(
   type,
   {
@@ -104,7 +116,7 @@ export function getTektonAPI(
     isWebSocket,
     name = '',
     namespace,
-    version = 'v1beta1'
+    version = getTektonPipelinesAPIVersion()
   } = {},
   queryParams
 ) {
@@ -115,13 +127,14 @@ export function getTektonAPI(
 }
 
 export const NamespaceContext = React.createContext();
+NamespaceContext.displayName = 'Namespace';
 
 function getResourceVersion(resource) {
   return parseInt(resource.metadata.resourceVersion, 10);
 }
 
 function handleCreated({ kind, payload: _, queryClient }) {
-  queryClient.invalidateQueries(kind);
+  queryClient.invalidateQueries([kind]);
 }
 
 function handleDeleted({ kind, payload, queryClient }) {
@@ -131,7 +144,7 @@ function handleDeleted({ kind, payload, queryClient }) {
   // remove any matching details page cache
   queryClient.removeQueries([kind, { name, ...(namespace && { namespace }) }]);
   // remove resource from any list page caches
-  queryClient.setQueriesData(kind, data => {
+  queryClient.setQueriesData([kind], data => {
     if (!Array.isArray(data?.items)) {
       // another details page cache, but not the one we're looking for
       // since we've just deleted its query above
@@ -158,7 +171,7 @@ function handleUpdated({ kind, payload, queryClient }) {
   const {
     metadata: { uid }
   } = payload;
-  queryClient.setQueriesData(kind, data => {
+  queryClient.setQueriesData([kind], data => {
     if (data?.metadata?.uid === uid) {
       // it's a details page cache (i.e. a single resource)
       return updateResource({ existing: data, incoming: payload });
@@ -253,12 +266,11 @@ export function useCollection({
     reactQueryConfig
   );
 
+  let data = [];
   let resourceVersion;
   if (query.data?.items) {
     resourceVersion = query.data.metadata.resourceVersion;
-    query.data = query.data.items;
-  } else {
-    query.data = [];
+    data = query.data.items;
   }
 
   const { isWebSocketConnected } = useWebSocket({
@@ -271,7 +283,7 @@ export function useCollection({
     resourceVersion,
     url: webSocketURL
   });
-  return { ...query, isWebSocketConnected };
+  return { ...query, data, isWebSocketConnected };
 }
 
 export function useResource({
@@ -311,4 +323,24 @@ export function isLogTimestampsEnabled() {
 
 export function setLogTimestampsEnabled(enabled) {
   localStorage.setItem('tkn-logs-timestamps', enabled);
+}
+
+export function removeSystemAnnotations(resource) {
+  Object.keys(resource.metadata.annotations).forEach(annotation => {
+    if (annotation.startsWith('tekton.dev/')) {
+      delete resource.metadata.annotations[annotation]; // eslint-disable-line no-param-reassign
+    }
+  });
+
+  delete resource.metadata.annotations[ // eslint-disable-line no-param-reassign
+    'kubectl.kubernetes.io/last-applied-configuration'
+  ];
+}
+
+export function removeSystemLabels(resource) {
+  Object.keys(resource.metadata.labels).forEach(label => {
+    if (label.startsWith('tekton.dev/')) {
+      delete resource.metadata.labels[label]; // eslint-disable-line no-param-reassign
+    }
+  });
 }

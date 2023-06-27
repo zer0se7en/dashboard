@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,7 +12,7 @@ limitations under the License.
 */
 
 import React from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import {
   Header as CarbonHeader,
   HeaderGlobalBar,
@@ -29,12 +29,12 @@ function skipToContentClick(event) {
 }
 
 function Header({
+  children,
   headerNameProps,
-  intl,
   isSideNavExpanded,
-  logoutButton,
   onHeaderMenuButtonClick
 }) {
+  const intl = useIntl();
   return (
     <CarbonHeader aria-label="Tekton Dashboard" className="tkn--header">
       <SkipToContent href="#" onClick={skipToContentClick}>
@@ -63,9 +63,9 @@ function Header({
       <HeaderName prefix="Tekton" {...headerNameProps}>
         Dashboard
       </HeaderName>
-      <HeaderGlobalBar>{logoutButton}</HeaderGlobalBar>
+      <HeaderGlobalBar>{children}</HeaderGlobalBar>
     </CarbonHeader>
   );
 }
 
-export default injectIntl(Header);
+export default Header;

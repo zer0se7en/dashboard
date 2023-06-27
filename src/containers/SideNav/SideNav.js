@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2022 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,9 +11,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React, { useEffect } from 'react';
-import { matchPath, NavLink, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import React from 'react';
+import { matchPath } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import {
   SideNav as CarbonSideNav,
   SideNavItems,
@@ -40,15 +41,15 @@ import {
 import { ReactComponent as KubernetesIcon } from '../../images/kubernetes.svg';
 import { ReactComponent as TektonIcon } from '../../images/tekton-logo-20x20.svg';
 
-function SideNav({ expanded, intl, showKubernetesResources }) {
+function SideNav({ expanded, showKubernetesResources }) {
+  const intl = useIntl();
   if (!expanded) {
     return null;
   }
 
   const location = useLocation();
-  const { namespace } = useParams();
 
-  const { selectedNamespace, selectNamespace } = useSelectedNamespace();
+  const { selectedNamespace } = useSelectedNamespace();
   const tenantNamespace = useTenantNamespace();
   const { data: extensions = [] } = useExtensions(
     {
@@ -56,12 +57,6 @@ function SideNav({ expanded, intl, showKubernetesResources }) {
     },
     { disableWebSocket: true }
   );
-
-  useEffect(() => {
-    if (namespace) {
-      selectNamespace(namespace);
-    }
-  }, [namespace]);
 
   function getMenuItemProps(to) {
     return {
@@ -115,11 +110,6 @@ function SideNav({ expanded, intl, showKubernetesResources }) {
           >
             PipelineRuns
           </SideNavMenuItem>
-          <SideNavMenuItem
-            {...getMenuItemProps(getPath(urls.pipelineResources.all()))}
-          >
-            PipelineResources
-          </SideNavMenuItem>
           <SideNavMenuItem {...getMenuItemProps(getPath(urls.tasks.all()))}>
             Tasks
           </SideNavMenuItem>
@@ -130,9 +120,9 @@ function SideNav({ expanded, intl, showKubernetesResources }) {
             TaskRuns
           </SideNavMenuItem>
           <SideNavMenuItem
-            {...getMenuItemProps(getPath(urls.conditions.all()))}
+            {...getMenuItemProps(getPath(urls.customRuns.all()))}
           >
-            Conditions
+            CustomRuns
           </SideNavMenuItem>
           {isTriggersInstalled && (
             <SideNavMenuItem
@@ -167,6 +157,13 @@ function SideNav({ expanded, intl, showKubernetesResources }) {
               {...getMenuItemProps(getPath(urls.triggerTemplates.all()))}
             >
               TriggerTemplates
+            </SideNavMenuItem>
+          )}
+          {isTriggersInstalled && (
+            <SideNavMenuItem
+              {...getMenuItemProps(getPath(urls.interceptors.all()))}
+            >
+              Interceptors
             </SideNavMenuItem>
           )}
           {isTriggersInstalled && (
@@ -263,4 +260,4 @@ SideNav.defaultProps = {
   showKubernetesResources: false
 };
 
-export default injectIntl(SideNav);
+export default SideNav;

@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,33 +13,29 @@ limitations under the License.
 
 import React from 'react';
 import PropTypes from 'prop-types';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import { InlineNotification, SkeletonText, Tag } from 'carbon-components-react';
 import { formatLabels, getErrorMessage } from '@tektoncd/dashboard-utils';
-import {
-  FormattedDate,
-  Tab,
-  Tabs,
-  ViewYAML
-} from '@tektoncd/dashboard-components';
+import { FormattedDate, Tab, Tabs, ViewYAML } from '..';
 
 const tabs = ['overview', 'yaml'];
 
 const ResourceDetails = ({
+  actions,
   additionalMetadata,
   children,
   error,
-  intl,
   loading,
   onViewChange,
-  resource,
+  resource: originalResource,
   view
 }) => {
+  const intl = useIntl();
   if (loading) {
     return <SkeletonText heading width="60%" />;
   }
 
-  if (error || !resource) {
+  if (error || !originalResource) {
     return (
       <InlineNotification
         kind="error"
@@ -59,14 +55,19 @@ const ResourceDetails = ({
     selectedTabIndex = 0;
   }
 
-  let formattedLabelsToRender = [];
-  if (resource.metadata.labels) {
-    formattedLabelsToRender = formatLabels(resource.metadata.labels);
+  const formattedLabels = formatLabels(originalResource.metadata.labels);
+
+  const resource = { ...originalResource };
+  if (resource.metadata?.managedFields) {
+    delete resource.metadata.managedFields;
   }
 
   return (
     <div className="tkn--resourcedetails">
-      <h1>{resource.metadata.name}</h1>
+      <div className="tkn--resourcedetails--header">
+        <h1>{resource.metadata.name}</h1>
+        {actions}
+      </div>
       <Tabs
         aria-label={intl.formatMessage({
           id: 'dashboard.resourceDetails.ariaLabel',
@@ -82,8 +83,8 @@ const ResourceDetails = ({
           })}
         >
           <div className="tkn--details">
-            <div className="tkn--resourcedetails-metadata">
-              <p>
+            <ul className="tkn--resourcedetails-metadata">
+              <li>
                 <span>
                   {intl.formatMessage({
                     id: 'dashboard.metadata.dateCreated',
@@ -94,27 +95,27 @@ const ResourceDetails = ({
                   date={resource.metadata.creationTimestamp}
                   relative
                 />
-              </p>
-              <p>
+              </li>
+              <li>
                 <span>
                   {intl.formatMessage({
                     id: 'dashboard.metadata.labels',
                     defaultMessage: 'Labels:'
                   })}
                 </span>
-                {formattedLabelsToRender.length === 0
+                {formattedLabels.length === 0
                   ? intl.formatMessage({
                       id: 'dashboard.metadata.none',
                       defaultMessage: 'None'
                     })
-                  : formattedLabelsToRender.map(label => (
+                  : formattedLabels.map(label => (
                       <Tag key={label} size="sm" type="blue">
                         {label}
                       </Tag>
                     ))}
-              </p>
+              </li>
               {resource.metadata.namespace && (
-                <p>
+                <li>
                   <span>
                     {intl.formatMessage({
                       id: 'dashboard.metadata.namespace',
@@ -122,10 +123,10 @@ const ResourceDetails = ({
                     })}
                   </span>
                   {resource.metadata.namespace}
-                </p>
+                </li>
               )}
               {resource.spec?.description && (
-                <p>
+                <li>
                   <span>
                     {intl.formatMessage({
                       id: 'dashboard.resourceDetails.description',
@@ -133,10 +134,10 @@ const ResourceDetails = ({
                     })}
                   </span>
                   {resource.spec.description}
-                </p>
+                </li>
               )}
               {additionalMetadata}
-            </div>
+            </ul>
             {children}
           </div>
         </Tab>
@@ -149,6 +150,7 @@ const ResourceDetails = ({
 };
 
 ResourceDetails.defaultProps = {
+  actions: null,
   additionalMetadata: null,
   children: null,
   error: null,
@@ -158,6 +160,7 @@ ResourceDetails.defaultProps = {
 };
 
 ResourceDetails.propTypes = {
+  actions: PropTypes.node,
   additionalMetadata: PropTypes.node,
   children: PropTypes.node,
   error: PropTypes.oneOfType([PropTypes.string, PropTypes.shape({})]),
@@ -166,4 +169,4 @@ ResourceDetails.propTypes = {
   view: PropTypes.string
 };
 
-export default injectIntl(ResourceDetails);
+export default ResourceDetails;

@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,8 +12,12 @@ limitations under the License.
 */
 
 import React, { useEffect, useState } from 'react';
-import { useHistory, useLocation, useParams } from 'react-router-dom';
-import { injectIntl } from 'react-intl';
+import {
+  useLocation,
+  useNavigate,
+  useParams
+} from 'react-router-dom-v5-compat';
+import { useIntl } from 'react-intl';
 import keyBy from 'lodash.keyby';
 import {
   DeleteModal,
@@ -49,9 +53,10 @@ import {
 const { CLUSTER_TASK, TASK } = labels;
 
 /* istanbul ignore next */
-function TaskRuns({ intl }) {
-  const history = useHistory();
+function TaskRuns() {
+  const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   const params = useParams();
 
   const { namespace: namespaceParam } = params;
@@ -78,7 +83,7 @@ function TaskRuns({ intl }) {
       ? clusterTaskFilter.replace(`${CLUSTER_TASK}=`, '')
       : taskFilter.replace(`${TASK}=`, '');
 
-  const setStatusFilter = getStatusFilterHandler({ history, location });
+  const setStatusFilter = getStatusFilterHandler({ location, navigate });
 
   useTitleSync({ page: 'TaskRuns' });
 
@@ -160,8 +165,12 @@ function TaskRuns({ intl }) {
     setCancelSelection(() => handleCancelSelection);
   }
 
-  function rerun(taskRun) {
-    rerunTaskRun(taskRun);
+  function editAndRun(taskRun) {
+    navigate(
+      `${urls.taskRuns.create()}?mode=yaml&taskRunName=${
+        taskRun.metadata.name
+      }&namespace=${taskRun.metadata.namespace}`
+    );
   }
 
   function taskRunActions() {
@@ -170,11 +179,19 @@ function TaskRuns({ intl }) {
     }
     return [
       {
-        action: rerun,
+        action: rerunTaskRun,
         actionText: intl.formatMessage({
           id: 'dashboard.rerun.actionText',
           defaultMessage: 'Rerun'
         }),
+        disable: resource => !!resource.metadata.labels?.['tekton.dev/pipeline']
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.editAndRun.actionText',
+          defaultMessage: 'Edit and run'
+        }),
+        action: editAndRun,
         disable: resource => !!resource.metadata.labels?.['tekton.dev/pipeline']
       },
       {
@@ -195,10 +212,6 @@ function TaskRuns({ intl }) {
           primaryButtonText: intl.formatMessage({
             id: 'dashboard.cancelTaskRun.primaryText',
             defaultMessage: 'Stop TaskRun'
-          }),
-          secondaryButtonText: intl.formatMessage({
-            id: 'dashboard.modal.cancelButton',
-            defaultMessage: 'Cancel'
           }),
           body: resource =>
             intl.formatMessage(
@@ -236,10 +249,6 @@ function TaskRuns({ intl }) {
             id: 'dashboard.actions.deleteButton',
             defaultMessage: 'Delete'
           }),
-          secondaryButtonText: intl.formatMessage({
-            id: 'dashboard.modal.cancelButton',
-            defaultMessage: 'Cancel'
-          }),
           body: resource =>
             intl.formatMessage(
               {
@@ -269,7 +278,7 @@ function TaskRuns({ intl }) {
                 ...(taskName && { taskName })
               }).toString();
             }
-            history.push(
+            navigate(
               urls.taskRuns.create() + (queryString ? `?${queryString}` : '')
             );
           },
@@ -305,29 +314,38 @@ function TaskRuns({ intl }) {
   );
 
   return (
-    <ListPageLayout error={getError()} filters={filters} title="TaskRuns">
-      <TaskRunsList
-        batchActionButtons={batchActionButtons}
-        filters={statusFilters}
-        loading={isLoading}
-        selectedNamespace={namespace}
-        taskRuns={taskRuns.filter(run => {
-          return runMatchesStatusFilter({ run, statusFilter });
-        })}
-        taskRunActions={taskRunActions()}
-        toolbarButtons={toolbarButtons}
-      />
-      {showDeleteModal ? (
-        <DeleteModal
-          kind="TaskRuns"
-          onClose={closeDeleteModal}
-          onSubmit={handleDelete}
-          resources={toBeDeleted}
-          showNamespace={namespace === ALL_NAMESPACES}
-        />
-      ) : null}
+    <ListPageLayout
+      error={getError()}
+      filters={filters}
+      resources={taskRuns.filter(run => {
+        return runMatchesStatusFilter({ run, statusFilter });
+      })}
+      title="TaskRuns"
+    >
+      {({ resources }) => (
+        <>
+          <TaskRunsList
+            batchActionButtons={batchActionButtons}
+            filters={statusFilters}
+            getRunActions={taskRunActions}
+            loading={isLoading}
+            selectedNamespace={namespace}
+            taskRuns={resources}
+            toolbarButtons={toolbarButtons}
+          />
+          {showDeleteModal ? (
+            <DeleteModal
+              kind="TaskRuns"
+              onClose={closeDeleteModal}
+              onSubmit={handleDelete}
+              resources={toBeDeleted}
+              showNamespace={namespace === ALL_NAMESPACES}
+            />
+          ) : null}
+        </>
+      )}
     </ListPageLayout>
   );
 }
 
-export default injectIntl(TaskRuns);
+export default TaskRuns;

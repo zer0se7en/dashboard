@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -36,15 +36,15 @@ function getFilters(showFilters) {
 
 export default {
   component: PipelineRuns,
-  title: 'Components/PipelineRuns'
+  title: 'PipelineRuns'
 };
 
 export const Base = () => (
   <PipelineRuns
-    createPipelineRunURL={({ namespace, pipelineRunName }) =>
+    getPipelineRunURL={({ namespace, pipelineRunName }) =>
       namespace ? `to-pipelineRun-${namespace}/${pipelineRunName}` : null
     }
-    createPipelineRunsByPipelineURL={({ namespace, pipelineName }) =>
+    getPipelineRunsByPipelineURL={({ namespace, pipelineName }) =>
       namespace
         ? `to-pipeline-${namespace}/${pipelineName}`
         : `to-pipeline/${pipelineName}`
@@ -54,7 +54,7 @@ export const Base = () => (
       pipelineRun.metadata.creationTimestamp
     }
     selectedNamespace="default"
-    pipelineRunActions={[
+    getRunActions={() => [
       {
         actionText: 'Cancel',
         action: resource => resource,
@@ -98,7 +98,11 @@ export const Base = () => (
           name: 'pipeline-run-20190816170431',
           namespace: '21cf1eac-7392-4e67-a4d0-f654506fe04d',
           uid: 'a7812005-f766-4877-abd4-b3d418b04f66',
-          creationTimestamp: '2019-08-16T17:09:12Z'
+          creationTimestamp: '2019-08-16T17:09:12Z',
+          labels: {
+            'triggers.tekton.dev/eventlistener': 'tekton-nightly',
+            'triggers.tekton.dev/trigger': 'dashboard-nightly-release'
+          }
         },
         spec: {
           pipelineRef: {
@@ -122,66 +126,14 @@ export const Base = () => (
         kind: 'PipelineRun',
         metadata: {
           name: 'output-pipeline-run',
-          creationTimestamp: '2019-10-09T17:10:49Z'
+          creationTimestamp: '2019-10-09T17:10:49Z',
+          uid: '01cb5ea7-0158-4031-bc70-6bf017533a94'
         },
         spec: {
           pipelineRef: {
             name: 'output-pipeline'
           },
-          serviceAccountName: 'default',
-          resources: [
-            {
-              name: 'source-repo',
-              resourceRef: {
-                name: 'skaffold-git'
-              }
-            }
-          ]
-        }
-      },
-      {
-        metadata: {
-          name: 'pipeline-run-20211118145503',
-          namespace: 'cb4552a6-b2d7-45e2-9773-3d4ca33909ff',
-          uid: '90cde04b-ef64-4e3a-a74c-9cd7f78738d2',
-          creationTimestamp: '2021-11-18T14:55:00Z'
-        },
-        spec: {
-          pipelineRef: {
-            name: 'pipeline'
-          }
-        },
-        status: {
-          conditions: [
-            {
-              lastTransitionTime: '2021-11-18T14:58:47Z',
-              message: 'All Tasks have completed executing',
-              reason: 'Succeeded',
-              status: 'True',
-              type: 'Succeeded'
-            }
-          ],
-          taskRuns: {
-            foo: {
-              status: {
-                conditions: [
-                  {
-                    reason: 'Succeeded',
-                    status: 'True',
-                    type: 'Succeeded'
-                  }
-                ],
-                steps: [
-                  {
-                    terminated: {
-                      exitCode: 1,
-                      reason: 'Completed'
-                    }
-                  }
-                ]
-              }
-            }
-          }
+          serviceAccountName: 'default'
         }
       }
     ]}
@@ -191,16 +143,16 @@ export const Base = () => (
 
 export const NoPipelineLink = () => (
   <PipelineRuns
-    createPipelineRunURL={({ namespace, pipelineRunName }) =>
+    getPipelineRunURL={({ namespace, pipelineRunName }) =>
       namespace ? `to-pipelineRun-${namespace}/${pipelineRunName}` : null
     }
-    createPipelineRunsByPipelineURL={() => null}
+    getPipelineRunsByPipelineURL={() => null}
     createPipelineRunTimestamp={pipelineRun =>
       getStatus(pipelineRun).lastTransitionTime ||
       pipelineRun.metadata.creationTimestamp
     }
     selectedNamespace="default"
-    pipelineRunActions={[
+    getRunActions={() => [
       {
         actionText: 'Cancel',
         action: resource => resource,
@@ -244,18 +196,12 @@ export const NoPipelineLink = () => (
         kind: 'PipelineRun',
         metadata: {
           name: 'output-pipeline-run',
-          creationTimestamp: '2019-10-09T17:10:49Z'
+          namespace: '61fe5520-a56e-4c1d-b7c3-d933b0f3c6a8',
+          creationTimestamp: '2019-10-09T17:10:49Z',
+          uid: '905c1ab0-203d-49ce-ad8d-4553e5d06bf0'
         },
         spec: {
-          serviceAccountName: 'default',
-          resources: [
-            {
-              name: 'source-repo',
-              resourceRef: {
-                name: 'skaffold-git'
-              }
-            }
-          ]
+          serviceAccountName: 'default'
         }
       }
     ]}
@@ -269,7 +215,7 @@ export const BatchActions = () => (
       { onClick: action('handleDelete'), text: 'Delete', icon: Delete }
     ]}
     selectedNamespace="default"
-    pipelineRunActions={[
+    getRunActions={() => [
       {
         actionText: 'An Action',
         action: resource => resource,
@@ -305,100 +251,133 @@ export const BatchActions = () => (
           uid: '77e0f4a3-40e5-46f1-84cc-ab7aa93c382c'
         },
         spec: {
-          serviceAccountName: 'default',
-          resources: [
-            {
-              name: 'source-repo',
-              resourceRef: {
-                name: 'skaffold-git'
-              }
-            }
-          ]
+          serviceAccountName: 'default'
         }
       }
     ]}
   />
 );
 
-export const CustomColumns = ({ showFilters }) => (
-  <PipelineRuns
-    columns={[
-      'status',
-      'name',
-      'pipeline',
-      'trigger',
-      'createdTime',
-      'duration'
-    ]}
-    customColumns={{
-      status: {
-        getValue() {
-          return (
-            <div className="tkn--definition">
-              <div className="tkn--status">
-                <StatusIcon /> Pending
-              </div>
-            </div>
-          );
-        }
-      },
-      trigger: {
-        header: 'Trigger',
-        getValue({ pipelineRun }) {
-          const trigger = pipelineRun.metadata.labels['tekton.dev/trigger'];
-          return <span title={trigger}>{trigger}</span>;
-        }
-      }
-    }}
-    filters={getFilters(showFilters)}
-    pipelineRunActions={[
-      {
-        actionText: 'An Action',
-        action: resource => resource,
-        modalProperties: {
-          heading: 'An Action',
-          primaryButtonText: 'OK',
-          secondaryButtonText: 'Cancel',
-          body: () => 'Do something interesting'
-        }
-      }
-    ]}
-    pipelineRuns={[
-      {
-        metadata: {
-          name: 'pipeline-run-20190816124708',
-          namespace: 'cb4552a6-b2d7-45e2-9773-3d4ca33909ff',
-          creationTimestamp: '2019-08-16T12:48:00Z',
-          labels: {
-            'tekton.dev/trigger': 'my-trigger'
-          }
-        },
-        spec: {
-          pipelineRef: {
-            name: 'pipeline'
+export const HideColumns = {
+  render: ({ showFilters }) => (
+    <PipelineRuns
+      columns={['run', 'status', 'time']}
+      filters={getFilters(showFilters)}
+      getRunActions={() => [
+        {
+          actionText: 'An Action',
+          action: resource => resource,
+          modalProperties: {
+            heading: 'An Action',
+            primaryButtonText: 'OK',
+            secondaryButtonText: 'Cancel',
+            body: () => 'Do something interesting'
           }
         }
-      }
-    ]}
-  />
-);
-CustomColumns.args = {
-  showFilters: false
+      ]}
+      pipelineRuns={[
+        {
+          metadata: {
+            name: 'pipeline-run-20190816124708',
+            namespace: 'cb4552a6-b2d7-45e2-9773-3d4ca33909ff',
+            creationTimestamp: '2019-08-16T12:48:00Z',
+            uid: 'c5ef252a-4635-46b5-ad7b-32c9e04cb6d2'
+          },
+          spec: {
+            pipelineRef: {
+              name: 'pipeline'
+            }
+          }
+        }
+      ]}
+    />
+  ),
+  args: {
+    showFilters: false
+  }
 };
 
-export const Loading = () => (
-  <PipelineRuns
-    selectedNamespace="default"
-    loading
-    pipelineRuns={[]}
-    cancelPipelineRun={() => {}}
-  />
-);
+export const CustomColumns = {
+  render: ({ showFilters }) => (
+    <PipelineRuns
+      columns={['status', 'run', 'worker', 'time']}
+      customColumns={{
+        status: {
+          getValue() {
+            return (
+              <div>
+                <div className="tkn--definition">
+                  <div className="tkn--status">
+                    <StatusIcon /> Pending
+                  </div>
+                </div>
+                <span>&nbsp;</span>
+              </div>
+            );
+          }
+        },
+        worker: {
+          header: 'Worker',
+          getValue({ pipelineRun }) {
+            const worker = pipelineRun.metadata.labels['example.com/worker'];
+            return (
+              <div>
+                <span title={worker}>{worker}</span>
+                <span>&nbsp;</span>
+              </div>
+            );
+          }
+        }
+      }}
+      filters={getFilters(showFilters)}
+      getRunActions={() => [
+        {
+          actionText: 'An Action',
+          action: resource => resource,
+          modalProperties: {
+            heading: 'An Action',
+            primaryButtonText: 'OK',
+            secondaryButtonText: 'Cancel',
+            body: () => 'Do something interesting'
+          }
+        }
+      ]}
+      pipelineRuns={[
+        {
+          metadata: {
+            name: 'pipeline-run-20190816124708',
+            namespace: 'cb4552a6-b2d7-45e2-9773-3d4ca33909ff',
+            creationTimestamp: '2019-08-16T12:48:00Z',
+            labels: {
+              'example.com/worker': 'my-worker'
+            },
+            uid: 'b0461c38-90e1-4d83-b32d-293cf3d0ea72'
+          },
+          spec: {
+            pipelineRef: {
+              name: 'pipeline'
+            }
+          }
+        }
+      ]}
+    />
+  ),
+  args: {
+    showFilters: false
+  }
+};
 
-export const Empty = () => (
-  <PipelineRuns
-    selectedNamespace="default"
-    pipelineRuns={[]}
-    cancelPipelineRun={() => {}}
-  />
-);
+export const Empty = {
+  args: {
+    cancelPipelineRun: () => {},
+    pipelineRuns: [],
+    selectedNamespace: 'default'
+  }
+};
+
+export const Loading = {
+  args: {
+    ...Empty.args,
+    loading: true
+  }
+};

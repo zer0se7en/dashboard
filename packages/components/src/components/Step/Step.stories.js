@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,44 +11,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
 import { action } from '@storybook/addon-actions';
 
 import Step from './Step';
 
-const props = {
-  exitCode: 0,
-  onSelect: action('selected'),
-  stepName: 'build'
-};
-
 export default {
+  args: {
+    exitCode: 0,
+    onSelect: action('selected'),
+    stepName: 'build'
+  },
   component: Step,
   parameters: {
     backgrounds: {
       default: 'white'
     }
   },
-  title: 'Components/Step'
+  title: 'Step'
 };
 
-export const Base = () => <Step {...props} />;
+export const Base = {};
+export const Selected = { args: { selected: true } };
+export const Waiting = { args: { status: 'waiting' } };
+export const Running = { args: { status: 'running' } };
 
-export const Selected = () => <Step {...props} selected />;
+export const Completed = {
+  args: { reason: 'Completed', status: 'terminated' }
+};
 
-export const Waiting = () => <Step {...props} status="waiting" />;
+export const CompletedWithWarning = {
+  args: {
+    ...Completed.args,
+    exitCode: 1
+  },
+  name: 'Completed with warning'
+};
 
-export const Running = () => <Step {...props} status="running" />;
-
-export const Completed = () => (
-  <Step {...props} status="terminated" reason="Completed" />
-);
-
-export const CompletedWithWarning = () => (
-  <Step {...props} exitCode={1} status="terminated" reason="Completed" />
-);
-CompletedWithWarning.storyName = 'Completed with warning';
-
-export const Error = () => (
-  <Step {...props} status="terminated" reason="Error" />
-);
+export const Error = { args: { reason: 'Error', status: 'terminated' } };

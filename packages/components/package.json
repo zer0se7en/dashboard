@@ -1,6 +1,6 @@
 {
   "name": "@tektoncd/dashboard-components",
-  "version": "0.1.0",
+  "version": "0.36.0-alpha.0",
   "author": {
     "name": "The Tekton Authors"
   },
@@ -19,30 +19,26 @@
   },
   "dependencies": {
     "@tektoncd/dashboard-utils": "file:../utils",
-    "@visx/event": "^2.1.0",
-    "@visx/network": "^2.1.0",
-    "d3-path": "^1.0.8",
-    "elkjs": "^0.5.1",
-    "js-yaml": "^3.13.0",
-    "linkify-it": "^3.0.2",
+    "js-yaml": "^4.1.0",
+    "linkify-it": "^4.0.1",
     "prop-types": "^15.7.2",
     "react-intl-formatted-duration": "^4.0.0",
-    "react-window": "^1.8.6",
-    "tlds": "^1.208.0"
+    "react-window": "^1.8.9",
+    "tlds": "^1.240.0"
   },
   "peerDependencies": {
     "@carbon/icons-react": "^10.44.0",
     "@carbon/themes": "^10.48.0",
-    "carbon-components": "^10.50.0",
-    "carbon-components-react": "^7.50.0",
+    "carbon-components": "^10.58.6",
+    "carbon-components-react": "^7.59.6",
     "react": "^16.14.0 || ^17.0.1",
     "react-dom": "^16.14.0 || ^17.0.1",
-    "react-intl": "^5.10.2",
+    "react-intl": "^6.4.1",
     "react-router-dom": "^5.0.0"
   },
   "engines": {
-    "node": "^16.13.2",
-    "npm": "^8.1.2"
+    "node": "^18.16.0",
+    "npm": "^9.5.1"
   },
   "publishConfig": {
     "access": "public"

@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,8 +13,9 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React, { useState } from 'react';
-import { useHistory, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom-v5-compat';
 import keyBy from 'lodash.keyby';
+import yaml from 'js-yaml';
 import {
   Button,
   Dropdown,
@@ -27,19 +28,28 @@ import {
   ALL_NAMESPACES,
   generateId,
   getTranslateWithId,
+  resourceNameRegex,
   urls,
   useTitleSync
 } from '@tektoncd/dashboard-utils';
 import { KeyValueList } from '@tektoncd/dashboard-components';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import {
   ClusterTasksDropdown,
   NamespacesDropdown,
-  PipelineResourcesDropdown,
   ServiceAccountsDropdown,
-  TasksDropdown
+  TasksDropdown,
+  YAMLEditor
 } from '..';
-import { createTaskRun, useSelectedNamespace, useTaskByKind } from '../../api';
+import {
+  createTaskRun,
+  createTaskRunRaw,
+  generateNewTaskRunPayload,
+  getTaskRunPayload,
+  useSelectedNamespace,
+  useTaskByKind,
+  useTaskRun
+} from '../../api';
 import { isValidLabel } from '../../utils';
 
 const clusterTaskItem = { id: 'clustertask', text: 'ClusterTask' };
@@ -55,14 +65,13 @@ const initialState = {
   nodeSelector: [],
   params: {},
   paramSpecs: [],
-  resources: { inputs: {}, outputs: {} },
-  resourceSpecs: [],
   serviceAccount: '',
   submitError: '',
   taskRef: '',
-  timeout: '60',
+  taskRunName: '',
+  timeout: '',
   validationError: false,
-  validTimeout: true
+  validTaskRunName: true
 };
 
 const initialParamsState = paramSpecs => {
@@ -75,34 +84,12 @@ const initialParamsState = paramSpecs => {
   );
 };
 
-const initialResourcesState = resourceSpecs => {
-  const resources = {
-    inputs: {},
-    outputs: {}
-  };
-  if (!resourceSpecs) {
-    return resources;
-  }
-  if (resourceSpecs.inputs) {
-    resources.inputs = resourceSpecs.inputs.reduce(
-      (acc, res) => ({ ...acc, [res.name]: '' }),
-      {}
-    );
-  }
-  if (resourceSpecs.outputs) {
-    resources.outputs = resourceSpecs.outputs.reduce(
-      (acc, res) => ({ ...acc, [res.name]: '' }),
-      {}
-    );
-  }
-  return resources;
-};
-
 const itemToString = ({ text }) => text;
 
-function CreateTaskRun({ intl }) {
-  const history = useHistory();
+function CreateTaskRun() {
+  const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   const { selectedNamespace: defaultNamespace } = useSelectedNamespace();
 
   function getTaskDetails() {
@@ -113,12 +100,22 @@ function CreateTaskRun({ intl }) {
     };
   }
 
+  function getTaskRunName() {
+    const urlSearchParams = new URLSearchParams(location.search);
+    return urlSearchParams.get('taskRunName') || '';
+  }
+
   function getNamespace() {
     const urlSearchParams = new URLSearchParams(location.search);
     return (
       urlSearchParams.get('namespace') ||
       (defaultNamespace !== ALL_NAMESPACES ? defaultNamespace : '')
     );
+  }
+
+  function isYAMLMode() {
+    const urlSearchParams = new URLSearchParams(location.search);
+    return urlSearchParams.get('mode') === 'yaml';
   }
 
   const { kind: initialTaskKind, taskName: taskRefFromDetails } =
@@ -133,13 +130,13 @@ function CreateTaskRun({ intl }) {
       namespace,
       nodeSelector,
       params,
-      resources,
       serviceAccount,
       submitError,
       taskRef,
+      taskRunName,
       timeout,
       validationError,
-      validTimeout
+      validTaskRunName
     },
     setState
   ] = useState({
@@ -147,8 +144,7 @@ function CreateTaskRun({ intl }) {
     kind: initialTaskKind || 'Task',
     namespace: getNamespace(),
     taskRef: taskRefFromDetails,
-    params: initialParamsState(null),
-    resources: initialResourcesState(null)
+    params: initialParamsState(null)
   });
 
   const { data: task, error: taskError } = useTaskByKind(
@@ -157,7 +153,6 @@ function CreateTaskRun({ intl }) {
   );
 
   const paramSpecs = task?.spec?.params;
-  const resourceSpecs = task?.spec?.resources;
 
   useTitleSync({
     page: intl.formatMessage({
@@ -166,24 +161,17 @@ function CreateTaskRun({ intl }) {
     })
   });
 
+  function switchToYamlMode() {
+    const queryParams = new URLSearchParams(location.search);
+    queryParams.set('mode', 'yaml');
+    const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
+    navigate(browserURL);
+  }
+
   function checkFormValidation() {
-    // Namespace, PipelineRef, Resources, and Params must all have values
+    // Namespace, taskRef, and Params must all have values
     const validNamespace = !!namespace;
     const validTaskRef = !!taskRef;
-    const validInputResources =
-      !resources ||
-      !resources.inputs ||
-      Object.keys(resources.inputs).reduce(
-        (acc, name) => acc && !!resources.inputs[name],
-        true
-      );
-    const validOutputResources =
-      !resources ||
-      !resources.outputs ||
-      Object.keys(resources.outputs).reduce(
-        (acc, name) => acc && !!resources.outputs[name],
-        true
-      );
 
     const paramSpecMap = keyBy(paramSpecs, 'name');
     const validParams =
@@ -196,13 +184,11 @@ function CreateTaskRun({ intl }) {
         true
       );
 
-    // Timeout is a number and less than 1 year in minutes
-    const isValidTimeout =
-      !Number.isNaN(timeout) && timeout < 525600 && timeout.trim() !== '';
-    setState(state => ({
-      ...state,
-      validTimeout: isValidTimeout
-    }));
+    // TaskRun name
+    const taskRunNameTest =
+      !taskRunName ||
+      (resourceNameRegex.test(taskRunName) && taskRunName.length < 64);
+    setState(state => ({ ...state, validTaskRunName: taskRunNameTest }));
 
     // Labels
     let validLabels = true;
@@ -241,12 +227,10 @@ function CreateTaskRun({ intl }) {
     return (
       validNamespace &&
       validTaskRef &&
-      validInputResources &&
-      validOutputResources &&
       validParams &&
-      isValidTimeout &&
       validLabels &&
-      validNodeSelector
+      validNodeSelector &&
+      taskRunNameTest
     );
   }
 
@@ -263,7 +247,7 @@ function CreateTaskRun({ intl }) {
     } else if (namespace && namespace !== ALL_NAMESPACES) {
       url = urls.taskRuns.byNamespace({ namespace });
     }
-    history.push(url);
+    navigate(url);
   }
 
   function handleAddLabel(prop) {
@@ -318,6 +302,24 @@ function CreateTaskRun({ intl }) {
     });
   }
 
+  function handleCloseYAMLEditor() {
+    let url = urls.taskRuns.all();
+    if (defaultNamespace && defaultNamespace !== ALL_NAMESPACES) {
+      url = urls.taskRuns.byNamespace({ namespace: defaultNamespace });
+    }
+    navigate(url);
+  }
+
+  function handleCreate({ resource }) {
+    const resourceNamespace = resource?.metadata?.namespace;
+    return createTaskRunRaw({
+      namespace: resourceNamespace,
+      payload: resource
+    }).then(() => {
+      navigate(urls.taskRuns.byNamespace({ namespace: resourceNamespace }));
+    });
+  }
+
   function handleNamespaceChange({ selectedItem }) {
     const { text = '' } = selectedItem || {};
     if (text !== namespace) {
@@ -336,7 +338,7 @@ function CreateTaskRun({ intl }) {
       }
       queryParams.delete('taskName');
       const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-      history.push(browserURL);
+      navigate(browserURL);
     }
   }
 
@@ -354,7 +356,7 @@ function CreateTaskRun({ intl }) {
       queryParams.delete('namespace');
       queryParams.delete('taskName');
       const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-      history.push(browserURL);
+      navigate(browserURL);
     }
   }
 
@@ -378,33 +380,24 @@ function CreateTaskRun({ intl }) {
       queryParams.delete('taskName');
     }
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    navigate(browserURL);
 
     if (text && text !== taskRef) {
       setState(state => {
         return {
           ...state,
           taskRef: text,
-          resources: initialResourcesState(resourceSpecs),
           params: initialParamsState(paramSpecs)
         };
       });
       return;
     }
-    // Reset pipelineresources and params when no Task is selected
+    // Reset params when no Task is selected
     setState(state => ({
       ...state,
       ...initialState,
       namespace: state.namespace
     }));
-  }
-
-  function handleResourceChange(resourceKind, key, value) {
-    setState(state => {
-      const next = { ...state };
-      next.resources[resourceKind][key] = value;
-      return next;
-    });
   }
 
   function handleSubmit(event) {
@@ -419,28 +412,27 @@ function CreateTaskRun({ intl }) {
 
     setState(state => ({ ...state, creating: true }));
 
-    const timeoutInMins = `${timeout}m`;
     createTaskRun({
-      namespace,
       kind,
-      taskName: taskRef,
-      resources,
-      params,
-      serviceAccount,
-      timeout: timeoutInMins,
       labels: labels.reduce((acc, { key, value }) => {
         acc[key] = value;
         return acc;
       }, {}),
+      namespace,
       nodeSelector: nodeSelector.length
         ? nodeSelector.reduce((acc, { key, value }) => {
             acc[key] = value;
             return acc;
           }, {})
-        : null
+        : null,
+      params,
+      serviceAccount,
+      taskName: taskRef,
+      taskRunName: taskRunName || undefined,
+      timeout
     })
       .then(() => {
-        history.push(urls.taskRuns.byNamespace({ namespace }));
+        navigate(urls.taskRuns.byNamespace({ namespace }));
       })
       .catch(error => {
         error.response.text().then(text => {
@@ -458,6 +450,74 @@ function CreateTaskRun({ intl }) {
       });
   }
 
+  if (isYAMLMode()) {
+    const externalTaskRunName = getTaskRunName();
+    if (externalTaskRunName) {
+      const { data: taskRunObject, isLoading } = useTaskRun(
+        {
+          name: externalTaskRunName,
+          namespace: getNamespace()
+        },
+        { disableWebSocket: true }
+      );
+      let payloadYaml = null;
+      if (taskRunObject) {
+        const { payload } = generateNewTaskRunPayload({
+          taskRun: taskRunObject,
+          rerun: false
+        });
+        payloadYaml = yaml.dump(payload);
+      }
+      const loadingMessage = intl.formatMessage(
+        {
+          id: 'dashboard.loading.resource',
+          defaultMessage: 'Loading {kind}…'
+        },
+        { kind: 'TaskRun' }
+      );
+
+      return (
+        <YAMLEditor
+          code={payloadYaml || ''}
+          handleClose={handleCloseYAMLEditor}
+          handleCreate={handleCreate}
+          kind="TaskRun"
+          loading={isLoading}
+          loadingMessage={loadingMessage}
+        />
+      );
+    }
+
+    const taskRun = getTaskRunPayload({
+      kind,
+      labels: labels.reduce((acc, { key, value }) => {
+        acc[key] = value;
+        return acc;
+      }, {}),
+      namespace,
+      nodeSelector: nodeSelector.length
+        ? nodeSelector.reduce((acc, { key, value }) => {
+            acc[key] = value;
+            return acc;
+          }, {})
+        : null,
+      params,
+      serviceAccount,
+      taskName: taskRef,
+      taskRunName: taskRunName || undefined,
+      timeout
+    });
+
+    return (
+      <YAMLEditor
+        code={yaml.dump(taskRun)}
+        handleClose={handleCloseYAMLEditor}
+        handleCreate={handleCreate}
+        kind="TaskRun"
+      />
+    );
+  }
+
   return (
     <div className="tkn--create">
       <div className="tkn--create--heading">
@@ -467,6 +527,18 @@ function CreateTaskRun({ intl }) {
             defaultMessage: 'Create TaskRun'
           })}
         </h1>
+        <div className="tkn--create--yaml-mode">
+          <Button
+            kind="tertiary"
+            id="create-taskrun--mode-button"
+            onClick={switchToYamlMode}
+          >
+            {intl.formatMessage({
+              id: 'dashboard.create.yamlModeButton',
+              defaultMessage: 'YAML Mode'
+            })}
+          </Button>
+        </div>
       </div>
       <Form>
         {taskError && (
@@ -632,66 +704,6 @@ function CreateTaskRun({ intl }) {
             onAdd={() => handleAddLabel('nodeSelector')}
           />
         </FormGroup>
-        {resourceSpecs?.inputs?.length > 0 && (
-          <FormGroup legendText="Input PipelineResources">
-            {resourceSpecs.inputs.map(spec => (
-              <PipelineResourcesDropdown
-                id={`create-taskrun--pr-dropdown-${spec.name}`}
-                key={`create-taskrun--pr-dropdown-${spec.name}`}
-                titleText={spec.name}
-                helperText={spec.type}
-                type={spec.type}
-                namespace={namespace}
-                invalid={validationError && !resources.inputs[spec.name]}
-                invalidText={intl.formatMessage({
-                  id: 'dashboard.createRun.invalidPipelineResources',
-                  defaultMessage: 'PipelineResources cannot be empty'
-                })}
-                selectedItem={(() => {
-                  let value = '';
-                  if (resources.inputs !== undefined) {
-                    value = resources.inputs[spec.name];
-                  }
-                  return value ? { id: value, text: value } : '';
-                })()}
-                onChange={({ selectedItem }) => {
-                  const { text } = selectedItem || {};
-                  handleResourceChange('inputs', spec.name, text);
-                }}
-              />
-            ))}
-          </FormGroup>
-        )}
-        {resourceSpecs?.outputs?.length > 0 && (
-          <FormGroup legendText="Output PipelineResources">
-            {resourceSpecs.outputs.map(spec => (
-              <PipelineResourcesDropdown
-                id={`create-taskrun--pr-dropdown-${spec.name}`}
-                key={`create-taskrun--pr-dropdown-${spec.name}`}
-                titleText={spec.name}
-                helperText={spec.type}
-                type={spec.type}
-                namespace={namespace}
-                invalid={validationError && !resources.outputs[spec.name]}
-                invalidText={intl.formatMessage({
-                  id: 'dashboard.createRun.invalidPipelineResources',
-                  defaultMessage: 'PipelineResources cannot be empty'
-                })}
-                selectedItem={(() => {
-                  let value = '';
-                  if (resources.outputs !== undefined) {
-                    value = resources.outputs[spec.name];
-                  }
-                  return value ? { id: value, text: value } : '';
-                })()}
-                onChange={({ selectedItem }) => {
-                  const { text } = selectedItem || {};
-                  handleResourceChange('outputs', spec.name, text);
-                }}
-              />
-            ))}
-          </FormGroup>
-        )}
         {paramSpecs && paramSpecs.length !== 0 && (
           <FormGroup legendText="Params">
             {paramSpecs.map(paramSpec => (
@@ -726,10 +738,7 @@ function CreateTaskRun({ intl }) {
         >
           <ServiceAccountsDropdown
             id="create-taskrun--sa-dropdown"
-            titleText={intl.formatMessage({
-              id: 'dashboard.serviceAccountLabel.optional',
-              defaultMessage: 'ServiceAccount (optional)'
-            })}
+            titleText="ServiceAccount"
             helperText={intl.formatMessage({
               id: 'dashboard.createTaskRun.serviceAccountHelperText',
               defaultMessage:
@@ -751,19 +760,26 @@ function CreateTaskRun({ intl }) {
               id: 'dashboard.createRun.timeoutLabel',
               defaultMessage: 'Timeout'
             })}
-            helperText={intl.formatMessage({
-              id: 'dashboard.createTaskRun.timeoutHelperText',
-              defaultMessage: 'TaskRun timeout in minutes'
-            })}
-            invalid={validationError && !validTimeout}
-            invalidText={intl.formatMessage({
-              id: 'dashboard.createRun.invalidTimeout',
-              defaultMessage: 'Timeout must be a valid number less than 525600'
-            })}
-            placeholder="60"
             value={timeout}
             onChange={({ target: { value } }) =>
               setState(state => ({ ...state, timeout: value }))
+            }
+          />
+          <TextInput
+            id="create-taskrun--taskrunname"
+            labelText={intl.formatMessage({
+              id: 'dashboard.createRun.taskRunNameLabel',
+              defaultMessage: 'TaskRun name'
+            })}
+            invalid={validationError && !validTaskRunName}
+            invalidText={intl.formatMessage({
+              id: 'dashboard.createResource.nameError',
+              defaultMessage:
+                "Must consist of lower case alphanumeric characters, '-' or '.', start and end with an alphanumeric character, and be at most 63 characters"
+            })}
+            value={taskRunName}
+            onChange={({ target: { value } }) =>
+              setState(state => ({ ...state, taskRunName: value.trim() }))
             }
           />
         </FormGroup>
@@ -800,4 +816,4 @@ function CreateTaskRun({ intl }) {
   );
 }
 
-export default injectIntl(CreateTaskRun);
+export default CreateTaskRun;

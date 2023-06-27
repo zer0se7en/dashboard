@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,19 +12,19 @@ limitations under the License.
 */
 
 import React from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import { Link } from 'react-router-dom';
 import {
   Accordion,
   AccordionItem,
-  Link as CarbonLink,
   ListItem,
   UnorderedList
 } from 'carbon-components-react';
 import { urls } from '@tektoncd/dashboard-utils';
-import { Table, ViewYAML } from '@tektoncd/dashboard-components';
+import { Link as CustomLink, Table, ViewYAML } from '..';
 
-const Trigger = ({ intl, namespace, trigger }) => {
+const Trigger = ({ namespace, trigger }) => {
+  const intl = useIntl();
   const tableHeaders = [
     {
       key: 'name',
@@ -67,7 +67,7 @@ const Trigger = ({ intl, namespace, trigger }) => {
                   {binding.ref ? (
                     <Link
                       className="tkn--trigger-resourcelink"
-                      component={CarbonLink}
+                      component={CustomLink}
                       to={
                         binding.kind === 'ClusterTriggerBinding'
                           ? urls.clusterTriggerBindings.byName({
@@ -102,7 +102,7 @@ const Trigger = ({ intl, namespace, trigger }) => {
           ) : (
             <Link
               className="tkn--trigger-resourcelink"
-              component={CarbonLink}
+              component={CustomLink}
               to={urls.triggerTemplates.byName({
                 namespace,
                 triggerTemplateName
@@ -188,7 +188,7 @@ const Trigger = ({ intl, namespace, trigger }) => {
                         <Table
                           headers={tableHeaders}
                           rows={headerValues}
-                          size="short"
+                          size="sm"
                           emptyTextAllNamespaces={intl.formatMessage({
                             id: 'dashboard.trigger.noHeaders',
                             defaultMessage:
@@ -300,7 +300,7 @@ const Trigger = ({ intl, namespace, trigger }) => {
                     <Table
                       headers={headers}
                       rows={rows}
-                      size="short"
+                      size="sm"
                       isSortable={false}
                       emptyTextAllNamespaces={intl.formatMessage({
                         id: 'dashboard.trigger.noOverlays',
@@ -320,7 +320,7 @@ const Trigger = ({ intl, namespace, trigger }) => {
                 const clusterInterceptorName = interceptor.ref.name;
                 content = (
                   <Link
-                    component={CarbonLink}
+                    component={CustomLink}
                     to={urls.clusterInterceptors.byName({
                       clusterInterceptorName
                     })}
@@ -358,4 +358,4 @@ const Trigger = ({ intl, namespace, trigger }) => {
   );
 };
 
-export default injectIntl(Trigger);
+export default Trigger;

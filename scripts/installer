@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2021-2022 The Tekton Authors
+# Copyright 2021-2023 The Tekton Authors
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,8 +12,7 @@
 # limitations under the License.
 
 # dashboard flavour
-OPENSHIFT="false"
-READONLY="false"
+READONLY="true"
 
 # configuration default values
 DEBUG="false"
@@ -31,13 +30,23 @@ BASE_RELEASE_URL="https://storage.googleapis.com/tekton-releases/dashboard"
 
 # additional options passed to ko resolve
 KO_RESOLVE_OPTIONS=""
+PLATFORM=""
 
 initOS() {
   OS=$(echo `uname`|tr '[:upper:]' '[:lower:]')
 
   case "$OS" in
     # Minimalist GNU for Windows
-    mingw*) OS='windows';;
+    mingw*)
+      OS='windows'
+      ;;
+    darwin*)
+      ARCH=$(uname -m)
+      if [ "$ARCH" == "arm64" ] && [ -z "$PLATFORM" ]; then
+        debug "Detected Apple M1 and no custom platform specified"
+        PLATFORM="--platform linux/arm64"
+      fi
+      ;;
   esac
 
   debug "Detected OS: $OS"
@@ -88,7 +97,7 @@ compile() {
   fi
 
   debug "Building overlay $overlay ..."
-  kustomize build --load_restrictor none "$overlay" | ko resolve $KO_RESOLVE_OPTIONS -f - > "$TMP_FILE"
+  kustomize build --load-restrictor LoadRestrictionsNone "$overlay" | ko resolve $KO_RESOLVE_OPTIONS $PLATFORM -f - > "$TMP_FILE"
 }
 
 download() {
@@ -98,10 +107,10 @@ download() {
     local url="$BASE_RELEASE_URL/previous/$DASHBOARD_VERSION/installer-"
   fi
 
-  url="${url}tekton-dashboard-release"
+  url="${url}release"
 
-  if [ "$READONLY" == "true" ]; then
-    url="${url}-readonly"
+  if [ "$READONLY" == "false" ]; then
+    url="${url}-full"
   fi
 
   url="${url}.yaml"
@@ -118,20 +127,14 @@ download() {
 setup() {
   if [ ! -z "$OVERRIDE_NAMESPACE" ]; then
     INSTALL_NAMESPACE="$OVERRIDE_NAMESPACE"
-  elif [ "$OPENSHIFT" == "true" ]; then
-    INSTALL_NAMESPACE="openshift-pipelines"
   fi
 
   if [ ! -z "$OVERRIDE_PIPELINES_NAMESPACE" ]; then
     PIPELINES_NAMESPACE="$OVERRIDE_PIPELINES_NAMESPACE"
-  elif [ "$OPENSHIFT" == "true" ]; then
-    PIPELINES_NAMESPACE="openshift-pipelines"
   fi
 
   if [ ! -z "$OVERRIDE_TRIGGERS_NAMESPACE" ]; then
     TRIGGERS_NAMESPACE="$OVERRIDE_TRIGGERS_NAMESPACE"
-  elif [ "$OPENSHIFT" == "true" ]; then
-    TRIGGERS_NAMESPACE="openshift-pipelines"
   fi
 }
 
@@ -278,6 +281,24 @@ fi
 }
 
 ingress() {
+INGRESS_DEFAULT_CLASS_NAME_CONFIG=""
+if [ "$INGRESS_DEFAULT_CLASS" == "true" ]; then
+INGRESS_DEFAULT_CLASS_NAME_CONFIG="ingressClassName: nginx"
+cat <<EOF >> $TMP_FILE
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+  name: nginx
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: k8s.io/ingress-nginx
+EOF
+fi
+
 if [ ! -z "$INGRESS_URL" ] && [ ! -z "$INGRESS_SECRET" ]; then
 cat <<EOF >> $TMP_FILE
 ---
@@ -287,6 +308,7 @@ metadata:
   name: tekton-dashboard
   namespace: $INSTALL_NAMESPACE
 spec:
+  $INGRESS_DEFAULT_CLASS_NAME_CONFIG
   tls:
   - hosts:
     - $INGRESS_URL
@@ -311,6 +333,7 @@ metadata:
   name: tekton-dashboard
   namespace: $INSTALL_NAMESPACE
 spec:
+  $INGRESS_DEFAULT_CLASS_NAME_CONFIG
   rules:
   - host: $INGRESS_URL
     http:
@@ -393,15 +416,14 @@ help () {
   echo -e "\t[--logout-url <logout-url>]\t\tWill set up the logout URL"
   echo -e "\t[--namespace <namespace>]\t\tWill override install namespace"
   echo -e "\t[--nightly]\t\t\t\tWill download manifests from the nightly releases channel"
-  echo -e "\t[--openshift]\t\t\t\tWill build manifests for openshift"
   echo -e "\t[--output <file>]\t\t\tWill output built manifests in the file instead of in the console"
-  echo -e "\t[--pipelines-namespace <namespace>]\tOverride the namespace where Tekton Pipelines is installed (defaults to tekton-pipelines)"
+  echo -e "\t[--pipelines-namespace <namespace>]\tOverride the namespace where Tekton Pipelines is installed (defaults to Dashboard install namespace)"
   echo -e "\t[--platform <platform>]\t\t\tOverride the platform to build for"
-  echo -e "\t[--read-only]\t\t\t\tWill build manifests for a readonly deployment"
+  echo -e "\t[--read-write]\t\t\t\tWill build manifests for a read/write deployment"
   echo -e "\t[--stream-logs false]\t\t\tWill disable log streaming and use polling instead"
   echo -e "\t[--tag <tag>]\t\t\t\tTag used for the image produced by ko"
   echo -e "\t[--tenant-namespace <namespace>]\tWill limit the visibility to the specified namespace only"
-  echo -e "\t[--triggers-namespace <namespace>]\tOverride the namespace where Tekton Triggers is installed (defaults to tekton-pipelines)"
+  echo -e "\t[--triggers-namespace <namespace>]\tOverride the namespace where Tekton Triggers is installed (defaults to Dashboard install namespace)"
   echo -e "\t[--version <version>]\t\t\tWill download manifests for specified version or build everything using kustomize/ko"
 }
 
@@ -460,11 +482,8 @@ while [[ $# -gt 0 ]]; do
     '--nightly')
       BASE_RELEASE_URL="https://storage.googleapis.com/tekton-releases-nightly/dashboard"
       ;;
-    '--openshift')
-      OPENSHIFT="true"
-      ;;
-    '--read-only')
-      READONLY="true"
+    '--read-write')
+      READONLY="false"
       ;;
     '--stream-logs')
       shift
@@ -505,6 +524,9 @@ while [[ $# -gt 0 ]]; do
       shift
       TENANT_NAMESPACE="${1}"
       ;;
+    '--ingress-default-class')
+      INGRESS_DEFAULT_CLASS="true"
+      ;;
     '--ingress-url')
       shift
       INGRESS_URL="${1}"
@@ -522,7 +544,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     '--platform')
       shift
-      KO_RESOLVE_OPTIONS="$KO_RESOLVE_OPTIONS --platform=${1}"
+      PLATFORM="--platform ${1}"
       ;;
     '--tag')
       shift

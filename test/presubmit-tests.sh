@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2018-2022 The Tekton Authors
+# Copyright 2018-2023 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,9 @@
 # Markdown linting failures don't show up properly in Gubernator resulting
 # in a net-negative contributor experience.
 export DISABLE_MD_LINTING=1
+# GitHub is currently rejecting requests from the link checker with 403 due
+# to missing header. Disable until the tooling is updated to account for this.
+export DISABLE_MD_LINK_CHECK=1
 
 # FIXME(vdemeester) we need to come with something better (like baking common scripts in our image, when we got one)
 go mod vendor || exit 1
@@ -48,27 +51,38 @@ source $(dirname $0)/../vendor/github.com/tektoncd/plumbing/scripts/presubmit-te
 #   - post_integration_tests : runs after the integration-test function
 #
 
-function utility_install() {
-  # Install envsubst
-  apt-get install gettext-base
+function post_build_tests() {
+  header "Testing if golint has been done"
+  golangci-lint --color=never run
+
+  if [[ $? != 0 ]]; then
+      results_banner "Go Lint" 1
+      exit 1
+  fi
+
+  results_banner "Go Lint" 0
 }
 
 function get_node() {
-  echo "Script is running as $(whoami) on $(hostname)"
-  # It's Stretch and https://github.com/tektoncd/dashboard/blob/main/package.json
-  # denotes the Node.js and npm versions
+  echo "Installing Node.js"
   apt-get update
   apt-get install -y curl
-  curl -O https://nodejs.org/dist/v16.13.2/node-v16.13.2-linux-x64.tar.xz
-  tar xf node-v16.13.2-linux-x64.tar.xz
-  export PATH=$PATH:$(pwd)/node-v16.13.2-linux-x64/bin
+  curl -O https://nodejs.org/dist/v18.16.0/node-v18.16.0-linux-x64.tar.xz
+  tar xf node-v18.16.0-linux-x64.tar.xz
+  export PATH=$PATH:$(pwd)/node-v18.16.0-linux-x64/bin
+  echo ">> Node.js version"
+  node --version
+  echo ">> npm version"
+  npm --version
 }
 
 function node_npm_install() {
   local failed=0
+  echo "Configuring npm"
   mkdir ~/.npm-global
   npm config set prefix '~/.npm-global'
   export PATH=$PATH:$HOME/.npm-global/bin
+  echo "Installing package dependencies"
   npm ci || failed=1 # similar to `npm install` but ensures all versions from lock file
   return ${failed}
 }
@@ -94,20 +108,20 @@ function pre_unit_tests() {
 }
 
 function pre_integration_tests() {
-    local failed=0
+  local failed=0
+  if [ "${USE_NIGHTLY_RELEASE}" == "true" ]; then
+    echo "Using nightly release, skipping npm install and frontend build"
+  else
     node_npm_install || failed=1
+    echo "Running frontend build"
     npm run build || failed=1
-    return ${failed}
+  fi
+  return ${failed}
 }
 
 function extra_initialization() {
+  echo "Script is running as $(whoami) on $(hostname)"
   get_node
-  echo ">> npm version"
-  npm --version
-  echo ">> Node.js version"
-  node --version
-  echo "Installing shell utilities"
-  utility_install
 }
 
 function unit_tests() {

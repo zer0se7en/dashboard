@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,12 +13,14 @@ limitations under the License.
 const babel = require('@babel/core');
 const difference = require('lodash.difference');
 const fs = require('fs');
-const glob = require('glob');
+const { globSync } = require('glob');
 const omit = require('lodash.omit');
 const path = require('path');
 
 const basePath = process.cwd();
 const localeConfig = require(`${basePath}/config_frontend/config.json`).locales; // eslint-disable-line
+
+const babelConfig = require('../../babel.config')();
 
 const defaultMessages = {};
 const { default: defaultLocale, build: buildLocales } = localeConfig;
@@ -51,28 +53,32 @@ function writeLocaleFile(locale, messages) {
 
 // ----------------------------------------------------------------------------
 
+babelConfig.plugins.push([
+  'formatjs',
+  {
+    onMsgExtracted(filePath, msgs) {
+      log(filePath);
+      msgs.forEach(({ id, defaultMessage }) => {
+        if (defaultMessages[id] && defaultMessages[id] !== defaultMessage) {
+          throw new Error(
+            `Duplicate message id with conflicting defaultMessage: '${id}'`
+          );
+        }
+        defaultMessages[id] = defaultMessage;
+      });
+    }
+  }
+]);
+
+// ----------------------------------------------------------------------------
+
 log('Extracting messages\n');
 
-glob
-  .sync('./@(src|packages)/**/!(*.stories|*.test).js', {
-    ignore: ['./**/dist/**', './**/node_modules/**']
-  })
-  .forEach(filePath => {
-    log(filePath);
-    const { metadata } = babel.transformFileSync(path.normalize(filePath), {
-      plugins: [['react-intl', { extractFromFormatMessageCall: true }]]
-    });
-
-    const { messages } = metadata['react-intl'];
-    messages.forEach(({ id, defaultMessage }) => {
-      if (defaultMessages[id] && defaultMessages[id] !== defaultMessage) {
-        throw new Error(
-          `Duplicate message id with conflicting defaultMessage: '${id}'`
-        );
-      }
-      defaultMessages[id] = defaultMessage;
-    });
-  });
+globSync('./@(src|packages)/**/!(*.cy|*.stories|*.test).js', {
+  ignore: ['packages/**/node_modules/**', 'packages/e2e/**']
+}).forEach(filePath => {
+  babel.transformFileSync(path.normalize(filePath), babelConfig);
+});
 
 log('\nDone extracting messages\n');
 

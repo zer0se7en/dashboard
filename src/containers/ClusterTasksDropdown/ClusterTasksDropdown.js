@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2021 The Tekton Authors
+Copyright 2020-2022 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,18 +12,14 @@ limitations under the License.
 */
 
 import React from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import { TooltipDropdown } from '@tektoncd/dashboard-components';
 
 import { useClusterTasks } from '../../api';
 
-function ClusterTasksDropdown({ disabled, intl, label, ...rest }) {
-  const { data: clusterTasks = [], isFetching } = useClusterTasks(
-    {},
-    {
-      enabled: !disabled
-    }
-  );
+function ClusterTasksDropdown({ disabled, label, ...rest }) {
+  const intl = useIntl();
+  const { data: clusterTasks = [], isFetching } = useClusterTasks({});
 
   const items = clusterTasks.map(clusterTask => clusterTask.metadata.name);
 
@@ -55,4 +51,4 @@ ClusterTasksDropdown.defaultProps = {
   titleText: 'ClusterTask'
 };
 
-export default injectIntl(ClusterTasksDropdown);
+export default ClusterTasksDropdown;

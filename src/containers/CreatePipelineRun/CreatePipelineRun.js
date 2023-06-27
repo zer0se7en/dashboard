@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,8 +13,9 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React, { useState } from 'react';
-import { useHistory, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom-v5-compat';
 import keyBy from 'lodash.keyby';
+import yaml from 'js-yaml';
 import {
   Button,
   Form,
@@ -26,20 +27,25 @@ import {
 import {
   ALL_NAMESPACES,
   generateId,
+  resourceNameRegex,
   urls,
   useTitleSync
 } from '@tektoncd/dashboard-utils';
 import { KeyValueList } from '@tektoncd/dashboard-components';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import {
   NamespacesDropdown,
-  PipelineResourcesDropdown,
   PipelinesDropdown,
-  ServiceAccountsDropdown
+  ServiceAccountsDropdown,
+  YAMLEditor
 } from '..';
 import {
   createPipelineRun,
+  createPipelineRunRaw,
+  generateNewPipelineRunPayload,
+  getPipelineRunPayload,
   usePipeline,
+  usePipelineRun,
   useSelectedNamespace
 } from '../../api';
 import { isValidLabel } from '../../utils';
@@ -53,16 +59,17 @@ const initialState = {
   nodeSelector: [],
   params: {},
   paramSpecs: [],
-  pendingPipelineStatus: '',
+  pipelinePendingStatus: '',
   pipelineError: false,
   pipelineRef: '',
-  resources: {},
-  resourceSpecs: [],
+  pipelineRunName: '',
   serviceAccount: '',
   submitError: '',
-  timeout: '60',
+  timeoutsFinally: '',
+  timeoutsPipeline: '',
+  timeoutsTasks: '',
   validationError: false,
-  validTimeout: true
+  validPipelineRunName: true
 };
 
 const initialParamsState = paramSpecs => {
@@ -76,25 +83,20 @@ const initialParamsState = paramSpecs => {
   return paramSpecs.reduce(paramsReducer, {});
 };
 
-const initialResourcesState = resourceSpecs => {
-  if (!resourceSpecs) {
-    return {};
-  }
-  const resourcesReducer = (acc, resource) => ({
-    ...acc,
-    [resource.name]: ''
-  });
-  return resourceSpecs.reduce(resourcesReducer, {});
-};
-
-function CreatePipelineRun({ intl }) {
-  const history = useHistory();
+function CreatePipelineRun() {
+  const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   const { selectedNamespace: defaultNamespace } = useSelectedNamespace();
 
   function getPipelineName() {
     const urlSearchParams = new URLSearchParams(location.search);
     return urlSearchParams.get('pipelineName') || '';
+  }
+
+  function getPipelineRunName() {
+    const urlSearchParams = new URLSearchParams(location.search);
+    return urlSearchParams.get('pipelineRunName') || '';
   }
 
   function getNamespace() {
@@ -103,6 +105,11 @@ function CreatePipelineRun({ intl }) {
       urlSearchParams.get('namespace') ||
       (defaultNamespace !== ALL_NAMESPACES ? defaultNamespace : '')
     );
+  }
+
+  function isYAMLMode() {
+    const urlSearchParams = new URLSearchParams(location.search);
+    return urlSearchParams.get('mode') === 'yaml';
   }
 
   const [
@@ -116,20 +123,21 @@ function CreatePipelineRun({ intl }) {
       params,
       pipelinePendingStatus,
       pipelineRef,
-      resources,
+      pipelineRunName,
       serviceAccount,
       submitError,
-      timeout,
+      timeoutsFinally,
+      timeoutsPipeline,
+      timeoutsTasks,
       validationError,
-      validTimeout
+      validPipelineRunName
     },
     setState
   ] = useState({
     ...initialState,
     namespace: getNamespace(),
     pipelineRef: getPipelineName(),
-    params: initialParamsState(null),
-    resources: initialResourcesState(null)
+    params: initialParamsState(null)
   });
 
   const { data: pipeline, error: pipelineError } = usePipeline(
@@ -138,9 +146,8 @@ function CreatePipelineRun({ intl }) {
   );
 
   let paramSpecs;
-  let resourceSpecs;
   if (pipeline?.spec) {
-    ({ resources: resourceSpecs, params: paramSpecs } = pipeline.spec);
+    ({ params: paramSpecs } = pipeline.spec);
   }
 
   useTitleSync({
@@ -156,16 +163,18 @@ function CreatePipelineRun({ intl }) {
       pipelinePendingStatus: isPending ? 'PipelineRunPending' : ''
     }));
   };
+
+  function switchToYamlMode() {
+    const queryParams = new URLSearchParams(location.search);
+    queryParams.set('mode', 'yaml');
+    const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
+    navigate(browserURL);
+  }
+
   function checkFormValidation() {
-    // Namespace, PipelineRef, Resources, and Params must all have values
+    // Namespace, PipelineRef, and Params must all have values
     const validNamespace = !!namespace;
     const validPipelineRef = !!pipelineRef;
-    const validResources =
-      !resources ||
-      Object.keys(resources).reduce(
-        (acc, name) => acc && !!resources[name],
-        true
-      );
     const paramSpecMap = keyBy(paramSpecs, 'name');
     const validParams =
       !params ||
@@ -177,14 +186,14 @@ function CreatePipelineRun({ intl }) {
         true
       );
 
-    // Timeout is a number and less than 1 year in minutes
-    const timeoutTest =
-      !Number.isNaN(timeout) && timeout < 525600 && timeout.trim() !== '';
-    if (!timeoutTest) {
-      setState(state => ({ ...state, validTimeout: false }));
-    } else {
-      setState(state => ({ ...state, validTimeout: true }));
-    }
+    // PipelineRun name
+    const pipelineRunNameTest =
+      !pipelineRunName ||
+      (resourceNameRegex.test(pipelineRunName) && pipelineRunName.length < 64);
+    setState(state => ({
+      ...state,
+      validPipelineRunName: pipelineRunNameTest
+    }));
 
     // Labels
     let validLabels = true;
@@ -223,11 +232,10 @@ function CreatePipelineRun({ intl }) {
     return (
       validNamespace &&
       validPipelineRef &&
-      validResources &&
       validParams &&
-      timeoutTest &&
       validLabels &&
-      validNodeSelector
+      validNodeSelector &&
+      pipelineRunNameTest
     );
   }
 
@@ -253,7 +261,7 @@ function CreatePipelineRun({ intl }) {
     } else if (namespace && namespace !== ALL_NAMESPACES) {
       url = urls.pipelineRuns.byNamespace({ namespace });
     }
-    history.push(url);
+    navigate(url);
   }
 
   function handleAddLabel(prop) {
@@ -308,6 +316,24 @@ function CreatePipelineRun({ intl }) {
     });
   }
 
+  function handleCloseYAMLEditor() {
+    let url = urls.pipelineRuns.all();
+    if (defaultNamespace && defaultNamespace !== ALL_NAMESPACES) {
+      url = urls.pipelineRuns.byNamespace({ namespace: defaultNamespace });
+    }
+    navigate(url);
+  }
+
+  function handleCreate({ resource }) {
+    const resourceNamespace = resource?.metadata?.namespace;
+    return createPipelineRunRaw({
+      namespace: resourceNamespace,
+      payload: resource
+    }).then(() => {
+      navigate(urls.pipelineRuns.byNamespace({ namespace: resourceNamespace }));
+    });
+  }
+
   function handleNamespaceChange({ selectedItem }) {
     const { text = '' } = selectedItem || {};
     // Reset pipeline and ServiceAccount when namespace changes
@@ -326,7 +352,7 @@ function CreatePipelineRun({ intl }) {
       }
       queryParams.delete('pipelineName');
       const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-      history.push(browserURL);
+      navigate(browserURL);
     }
   }
 
@@ -350,34 +376,23 @@ function CreatePipelineRun({ intl }) {
       queryParams.delete('pipelineName');
     }
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    navigate(browserURL);
 
     if (text && text !== pipelineRef) {
       setState(state => {
         return {
           ...state,
           pipelineRef: text,
-          resources: initialResourcesState(resourceSpecs),
           params: initialParamsState(paramSpecs)
         };
       });
       return;
     }
-    // Reset pipelineresources and params when no Pipeline is selected
+    // Reset params when no Pipeline is selected
     setState(state => ({
       ...state,
       ...initialState,
       namespace: state.namespace
-    }));
-  }
-
-  function handleResourceChange(key, value) {
-    setState(state => ({
-      ...state,
-      resources: {
-        ...state.resources,
-        [key]: value
-      }
     }));
   }
 
@@ -396,15 +411,16 @@ function CreatePipelineRun({ intl }) {
 
     setState(state => ({ ...state, creating: true }));
 
-    const timeoutInMins = `${timeout}m`;
     createPipelineRun({
       namespace,
       pipelineName: pipelineRef,
-      resources,
+      pipelineRunName: pipelineRunName || undefined,
       params,
       pipelinePendingStatus,
       serviceAccount,
-      timeout: timeoutInMins,
+      timeoutsFinally,
+      timeoutsPipeline,
+      timeoutsTasks,
       labels: labels.reduce((acc, { key, value }) => {
         acc[key] = value;
         return acc;
@@ -417,7 +433,7 @@ function CreatePipelineRun({ intl }) {
         : null
     })
       .then(() => {
-        history.push(urls.pipelineRuns.byNamespace({ namespace }));
+        navigate(urls.pipelineRuns.byNamespace({ namespace }));
       })
       .catch(error => {
         error.response.text().then(text => {
@@ -435,6 +451,75 @@ function CreatePipelineRun({ intl }) {
       });
   }
 
+  if (isYAMLMode()) {
+    const externalPipelineRunName = getPipelineRunName();
+    if (externalPipelineRunName) {
+      const { data: pipelineRunObject, isLoading } = usePipelineRun(
+        {
+          name: externalPipelineRunName,
+          namespace: getNamespace()
+        },
+        { disableWebSocket: true }
+      );
+      let payloadYaml = null;
+      if (pipelineRunObject) {
+        const { payload } = generateNewPipelineRunPayload({
+          pipelineRun: pipelineRunObject,
+          rerun: false
+        });
+        payloadYaml = yaml.dump(payload);
+      }
+      const loadingMessage = intl.formatMessage(
+        {
+          id: 'dashboard.loading.resource',
+          defaultMessage: 'Loading {kind}…'
+        },
+        { kind: 'PipelineRun' }
+      );
+
+      return (
+        <YAMLEditor
+          code={payloadYaml || ''}
+          handleClose={handleCloseYAMLEditor}
+          handleCreate={handleCreate}
+          kind="PipelineRun"
+          loading={isLoading}
+          loadingMessage={loadingMessage}
+        />
+      );
+    }
+    const pipelineRun = getPipelineRunPayload({
+      labels: labels.reduce((acc, { key, value }) => {
+        acc[key] = value;
+        return acc;
+      }, {}),
+      namespace,
+      nodeSelector: nodeSelector.length
+        ? nodeSelector.reduce((acc, { key, value }) => {
+            acc[key] = value;
+            return acc;
+          }, {})
+        : null,
+      pipelineName: pipelineRef,
+      pipelineRunName: pipelineRunName || undefined,
+      params,
+      pipelinePendingStatus,
+      serviceAccount,
+      timeoutsFinally,
+      timeoutsPipeline,
+      timeoutsTasks
+    });
+
+    return (
+      <YAMLEditor
+        code={yaml.dump(pipelineRun)}
+        handleClose={handleCloseYAMLEditor}
+        handleCreate={handleCreate}
+        kind="PipelineRun"
+      />
+    );
+  }
+
   return (
     <div className="tkn--create">
       <div className="tkn--create--heading">
@@ -444,6 +529,18 @@ function CreatePipelineRun({ intl }) {
             defaultMessage: 'Create PipelineRun'
           })}
         </h1>
+        <div className="tkn--create--yaml-mode">
+          <Button
+            kind="tertiary"
+            id="create-pipelinerun--mode-button"
+            onClick={switchToYamlMode}
+          >
+            {intl.formatMessage({
+              id: 'dashboard.create.yamlModeButton',
+              defaultMessage: 'YAML Mode'
+            })}
+          </Button>
+        </div>
       </div>
       <Form>
         {pipelineError && (
@@ -582,33 +679,6 @@ function CreatePipelineRun({ intl }) {
             onAdd={() => handleAddLabel('nodeSelector')}
           />
         </FormGroup>
-        {resourceSpecs && resourceSpecs.length !== 0 && (
-          <FormGroup legendText="PipelineResources">
-            {resourceSpecs.map(resourceSpec => (
-              <PipelineResourcesDropdown
-                id={`create-pipelinerun--pr-dropdown-${resourceSpec.name}`}
-                key={`create-pipelinerun--pr-dropdown-${resourceSpec.name}`}
-                titleText={resourceSpec.name}
-                helperText={resourceSpec.type}
-                type={resourceSpec.type}
-                namespace={namespace}
-                invalid={validationError && !resources[resourceSpec.name]}
-                invalidText={intl.formatMessage({
-                  id: 'dashboard.createRun.invalidPipelineResources',
-                  defaultMessage: 'PipelineResources cannot be empty'
-                })}
-                selectedItem={(() => {
-                  const value = resources[resourceSpec.name];
-                  return value ? { id: value, text: value } : '';
-                })()}
-                onChange={({ selectedItem }) => {
-                  const { text } = selectedItem || {};
-                  handleResourceChange(resourceSpec.name, text);
-                }}
-              />
-            ))}
-          </FormGroup>
-        )}
         {paramSpecs && paramSpecs.length !== 0 && (
           <FormGroup legendText="Params">
             {paramSpecs.map(paramSpec => (
@@ -643,10 +713,7 @@ function CreatePipelineRun({ intl }) {
         >
           <ServiceAccountsDropdown
             id="create-pipelinerun--sa-dropdown"
-            titleText={intl.formatMessage({
-              id: 'dashboard.serviceAccountLabel.optional',
-              defaultMessage: 'ServiceAccount (optional)'
-            })}
+            titleText="ServiceAccount"
             helperText={intl.formatMessage({
               id: 'dashboard.createPipelineRun.serviceAccountHelperText',
               defaultMessage:
@@ -663,26 +730,53 @@ function CreatePipelineRun({ intl }) {
             }}
           />
           <TextInput
-            id="create-pipelinerun--timeout"
+            id="create-pipelinerun--pipelinerunname"
             labelText={intl.formatMessage({
-              id: 'dashboard.createRun.timeoutLabel',
-              defaultMessage: 'Timeout'
+              id: 'dashboard.createRun.pipelineRunNameLabel',
+              defaultMessage: 'PipelineRun name'
             })}
-            helperText={intl.formatMessage({
-              id: 'dashboard.createPipelineRun.timeoutHelperText',
-              defaultMessage: 'PipelineRun timeout in minutes'
-            })}
-            invalid={validationError && !validTimeout}
+            invalid={validationError && !validPipelineRunName}
             invalidText={intl.formatMessage({
-              id: 'dashboard.createRun.invalidTimeout',
-              defaultMessage: 'Timeout must be a valid number less than 525600'
+              id: 'dashboard.createResource.nameError',
+              defaultMessage:
+                "Must consist of lower case alphanumeric characters, '-' or '.', start and end with an alphanumeric character, and be at most 63 characters"
             })}
-            placeholder="60"
-            value={timeout}
+            value={pipelineRunName}
             onChange={({ target: { value } }) =>
-              setState(state => ({ ...state, timeout: value }))
+              setState(state => ({ ...state, pipelineRunName: value.trim() }))
             }
           />
+          <FormGroup
+            legendText={intl.formatMessage({
+              id: 'dashboard.createRun.optional.timeouts',
+              defaultMessage: 'Timeouts'
+            })}
+          >
+            <TextInput
+              id="create-pipelinerun--timeouts--pipeline"
+              labelText="Pipeline"
+              value={timeoutsPipeline}
+              onChange={({ target: { value } }) =>
+                setState(state => ({ ...state, timeoutsPipeline: value }))
+              }
+            />
+            <TextInput
+              id="create-pipelinerun--timeouts--tasks"
+              labelText="Tasks"
+              value={timeoutsTasks}
+              onChange={({ target: { value } }) =>
+                setState(state => ({ ...state, timeoutsTasks: value }))
+              }
+            />
+            <TextInput
+              id="create-pipelinerun--timeouts--finally"
+              labelText="Finally"
+              value={timeoutsFinally}
+              onChange={({ target: { value } }) =>
+                setState(state => ({ ...state, timeoutsFinally: value }))
+              }
+            />
+          </FormGroup>
           <Toggle
             defaultToggled={false}
             id="pending-pipeline-toggle"
@@ -735,4 +829,4 @@ function CreatePipelineRun({ intl }) {
   );
 }
 
-export default injectIntl(CreatePipelineRun);
+export default CreatePipelineRun;

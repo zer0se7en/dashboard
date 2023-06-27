@@ -1,4 +1,4 @@
-# Copyright 2020-2021 The Tekton Authors
+# Copyright 2020-2023 The Tekton Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,14 +23,7 @@
       - taskruns
       - pipelines
       - pipelineruns
-      - pipelineresources
-      - conditions
-      - taskruns/finalizers
-      - pipelineruns/finalizers
-      - tasks/status
-      - taskruns/status
-      - pipelines/status
-      - pipelineruns/status
+      - customruns
     verbs:
       - create
       - update
@@ -43,6 +36,7 @@
       - triggers.tekton.dev
     resources:
       - eventlisteners
+      - interceptors
       - triggerbindings
       - triggers
       - triggertemplates

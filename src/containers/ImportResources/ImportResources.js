@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,7 +12,7 @@ limitations under the License.
 */
 
 import React, { useState } from 'react';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
 import {
   Accordion,
   AccordionItem,
@@ -34,11 +34,7 @@ import {
   useTitleSync
 } from '@tektoncd/dashboard-utils';
 import parseGitURL from 'git-url-parse';
-import {
-  importResources,
-  useDashboardNamespace,
-  useSelectedNamespace
-} from '../../api';
+import { importResources, useSelectedNamespace } from '../../api';
 import { NamespacesDropdown, ServiceAccountsDropdown } from '..';
 
 const itemToString = ({ text }) => text;
@@ -47,8 +43,12 @@ function isValidGitURL(url) {
   if (!url || !url.trim()) {
     return false;
   }
-  const { name, owner, resource } = parseGitURL(url);
-  return !!(name && owner && resource);
+  try {
+    const { name, owner, resource } = parseGitURL(url);
+    return !!(name && owner && resource);
+  } catch {
+    return false;
+  }
 }
 
 const initialMethod = 'apply';
@@ -59,12 +59,12 @@ const HelpIcon = ({ title }) => (
   </TooltipIcon>
 );
 
-export function ImportResources({ intl }) {
+export function ImportResources() {
+  const intl = useIntl();
   const { selectedNamespace: navNamespace } = useSelectedNamespace();
-  const dashboardNamespace = useDashboardNamespace();
 
   const [importerNamespace, setImporterNamespace] =
-    useState(dashboardNamespace);
+    useState('tekton-dashboard');
   const [invalidImporterNamespace, setInvalidImporterNamespace] =
     useState(false);
   const [invalidInput, setInvalidInput] = useState(false);
@@ -362,10 +362,7 @@ export function ImportResources({ intl }) {
               onChange={handleServiceAccount}
               titleText={
                 <>
-                  {intl.formatMessage({
-                    id: 'dashboard.serviceAccountLabel.optional',
-                    defaultMessage: 'ServiceAccount (optional)'
-                  })}
+                  ServiceAccount
                   <HelpIcon
                     title={intl.formatMessage({
                       id: 'dashboard.importResources.serviceAccount.helperText',
@@ -429,4 +426,4 @@ export function ImportResources({ intl }) {
   );
 }
 
-export default injectIntl(ImportResources);
+export default ImportResources;

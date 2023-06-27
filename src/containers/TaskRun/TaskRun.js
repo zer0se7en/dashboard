@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2021 The Tekton Authors
+Copyright 2019-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,13 +13,18 @@ limitations under the License.
 /* istanbul ignore file */
 
 import React, { useRef, useState } from 'react';
-import { injectIntl } from 'react-intl';
-import { Link, useHistory, useLocation, useParams } from 'react-router-dom';
+import { useIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams
+} from 'react-router-dom-v5-compat';
 import { InlineNotification, SkeletonText } from 'carbon-components-react';
 import {
+  Actions,
   Log,
   Portal,
-  RunAction,
   RunHeader,
   StepDetails,
   TaskRunDetails,
@@ -29,6 +34,7 @@ import {
   getStatus,
   getStepDefinition,
   getStepStatus,
+  isRunning,
   queryParams as queryParamConstants,
   urls,
   useTitleSync
@@ -39,8 +45,9 @@ import {
   getLogsToolbar,
   getViewChangeHandler
 } from '../../utils';
-
 import {
+  cancelTaskRun,
+  deleteTaskRun,
   rerunTaskRun,
   useEvents,
   useExternalLogsURL,
@@ -51,34 +58,14 @@ import {
   useTaskByKind,
   useTaskRun
 } from '../../api';
+import { NotFound } from '..';
 
 const { STEP, TASK_RUN_DETAILS, VIEW } = queryParamConstants;
 
-function notification({ intl, kind, message }) {
-  const titles = {
-    info: intl.formatMessage({
-      id: 'dashboard.taskRun.unavailable',
-      defaultMessage: 'TaskRun not available'
-    }),
-    error: intl.formatMessage({
-      id: 'dashboard.taskRun.errorLoading',
-      defaultMessage: 'Error loading TaskRun'
-    })
-  };
-  return (
-    <InlineNotification
-      kind={kind}
-      hideCloseButton
-      lowContrast
-      title={titles[kind]}
-      subtitle={message}
-    />
-  );
-}
-
-export function TaskRunContainer({ intl }) {
-  const history = useHistory();
+export function TaskRunContainer() {
+  const intl = useIntl();
   const location = useLocation();
+  const navigate = useNavigate();
   const params = useParams();
 
   const { namespace: namespaceParam, taskRunName } = params;
@@ -93,7 +80,7 @@ export function TaskRunContainer({ intl }) {
 
   const maximizedLogsContainer = useRef();
   const [isLogsMaximized, setIsLogsMaximized] = useState(false);
-  const [rerunNotification, setRerunNotification] = useState(null);
+  const [showNotification, setShowNotification] = useState(null);
   const [isUsingExternalLogs, setIsUsingExternalLogs] = useState(false);
 
   const externalLogsURL = useExternalLogsURL();
@@ -114,7 +101,7 @@ export function TaskRunContainer({ intl }) {
     namespace
   });
 
-  const { data: task, isLoading: isLoadingTask } = useTaskByKind(
+  const { data: task, isInitialLoading: isLoadingTask } = useTaskByKind(
     {
       kind: taskRun?.spec.taskRef?.kind,
       name: taskRun?.spec.taskRef?.name,
@@ -198,33 +185,190 @@ export function TaskRunContainer({ intl }) {
     }
 
     const browserURL = location.pathname.concat(`?${queryParams.toString()}`);
-    history.push(browserURL);
+    if (showTaskRunDetails || selectedStepId) {
+      navigate(browserURL);
+    } else {
+      // auto-selecting step on first load
+      navigate(browserURL, { replace: true });
+    }
+  }
+
+  function cancel() {
+    cancelTaskRun({
+      name: taskRun.metadata.name,
+      namespace: taskRun.metadata.namespace
+    });
+  }
+
+  function deleteTask() {
+    deleteTaskRun({
+      name: taskRun.metadata.name,
+      namespace: taskRun.metadata.namespace
+    })
+      .then(() => {
+        navigate(urls.taskRuns.byNamespace({ namespace }));
+      })
+      .catch(err => {
+        err.response.text().then(text => {
+          const statusCode = err.response.status;
+          let errorMessage = `error code ${statusCode}`;
+          if (text) {
+            errorMessage = `${text} (error code ${statusCode})`;
+          }
+          setShowNotification({
+            kind: 'error',
+            message: errorMessage
+          });
+        });
+      });
+  }
+
+  function rerun() {
+    rerunTaskRun(taskRun)
+      .then(newRun => {
+        setShowNotification({
+          kind: 'success',
+          logsURL: urls.taskRuns.byName({
+            namespace,
+            taskRunName: newRun.metadata.name
+          }),
+          message: intl.formatMessage({
+            id: 'dashboard.rerun.triggered',
+            defaultMessage: 'Triggered rerun'
+          })
+        });
+      })
+      .catch(rerunError => {
+        setShowNotification({
+          kind: 'error',
+          message: intl.formatMessage(
+            {
+              id: 'dashboard.rerun.error',
+              defaultMessage:
+                'An error occurred when rerunning {runName}: check the dashboard logs for details. Status code: {statusCode}'
+            },
+            {
+              runName: taskRun.metadata.name,
+              statusCode: rerunError.response.status
+            }
+          )
+        });
+      });
+  }
+
+  function editAndRun() {
+    navigate(
+      `${urls.taskRuns.create()}?mode=yaml&taskRunName=${
+        taskRun.metadata.name
+      }&namespace=${taskRun.metadata.namespace}`
+    );
+  }
+
+  function taskRunActions() {
+    if (isReadOnly) {
+      return [];
+    }
+    return [
+      {
+        action: rerun,
+        actionText: intl.formatMessage({
+          id: 'dashboard.rerun.actionText',
+          defaultMessage: 'Rerun'
+        }),
+        disable: resource => !!resource.metadata.labels?.['tekton.dev/pipeline']
+      },
+      {
+        action: editAndRun,
+        actionText: intl.formatMessage({
+          id: 'dashboard.editAndRun.actionText',
+          defaultMessage: 'Edit and run'
+        }),
+        disable: resource => !!resource.metadata.labels?.['tekton.dev/pipeline']
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.cancelTaskRun.actionText',
+          defaultMessage: 'Stop'
+        }),
+        action: cancel,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return !isRunning(reason, status);
+        },
+        modalProperties: {
+          heading: intl.formatMessage({
+            id: 'dashboard.cancelTaskRun.heading',
+            defaultMessage: 'Stop TaskRun'
+          }),
+          primaryButtonText: intl.formatMessage({
+            id: 'dashboard.cancelTaskRun.primaryText',
+            defaultMessage: 'Stop TaskRun'
+          }),
+          body: resource =>
+            intl.formatMessage(
+              {
+                id: 'dashboard.cancelTaskRun.body',
+                defaultMessage:
+                  'Are you sure you would like to stop TaskRun {name}?'
+              },
+              { name: resource.metadata.name }
+            )
+        }
+      },
+      {
+        actionText: intl.formatMessage({
+          id: 'dashboard.actions.deleteButton',
+          defaultMessage: 'Delete'
+        }),
+        action: deleteTask,
+        danger: true,
+        disable: resource => {
+          const { reason, status } = getStatus(resource);
+          return isRunning(reason, status);
+        },
+        hasDivider: true,
+        modalProperties: {
+          danger: true,
+          heading: intl.formatMessage(
+            {
+              id: 'dashboard.deleteResources.heading',
+              defaultMessage: 'Delete {kind}'
+            },
+            { kind: 'TaskRun' }
+          ),
+          primaryButtonText: intl.formatMessage({
+            id: 'dashboard.actions.deleteButton',
+            defaultMessage: 'Delete'
+          }),
+          body: resource =>
+            intl.formatMessage(
+              {
+                id: 'dashboard.deleteTaskRun.body',
+                defaultMessage:
+                  'Are you sure you would like to delete TaskRun {name}?'
+              },
+              { name: resource.metadata.name }
+            )
+        }
+      }
+    ];
   }
 
   if (isLoadingTaskRun || isLoadingTask) {
     return <SkeletonText heading width="60%" />;
   }
 
-  if (error) {
-    return notification({
-      intl,
-      kind: 'error',
-      message: intl.formatMessage({
-        id: 'dashboard.taskRun.errorLoading',
-        defaultMessage: 'Error loading TaskRun'
-      })
-    });
-  }
-
-  if (!taskRun) {
-    return notification({
-      intl,
-      kind: 'info',
-      message: intl.formatMessage({
-        id: 'dashboard.taskRun.unavailable',
-        defaultMessage: 'TaskRun not available'
-      })
-    });
+  if (error || !taskRun) {
+    return (
+      <NotFound
+        suggestions={[
+          {
+            text: 'TaskRuns',
+            to: urls.taskRuns.byNamespace({ namespace })
+          }
+        ]}
+      />
+    );
   }
 
   const definition = getStepDefinition({
@@ -250,23 +394,9 @@ export function TaskRunContainer({ intl }) {
     taskRun
   });
 
-  const onViewChange = getViewChangeHandler({ history, location });
+  const onViewChange = getViewChangeHandler({ location, navigate });
 
-  const rerun = !isReadOnly &&
-    !taskRun.metadata?.labels?.['tekton.dev/pipeline'] && (
-      <RunAction
-        action="rerun"
-        getURL={({ name, namespace: currentNamespace }) =>
-          urls.taskRuns.byName({
-            namespace: currentNamespace,
-            taskRunName: name
-          })
-        }
-        run={taskRun}
-        runaction={rerunTaskRun}
-        showNotification={setRerunNotification}
-      />
-    );
+  const runActions = taskRunActions();
 
   let podDetails;
   if (!selectedStepId) {
@@ -276,14 +406,14 @@ export function TaskRunContainer({ intl }) {
   return (
     <>
       <div id="tkn--maximized-logs-container" ref={maximizedLogsContainer} />
-      {rerunNotification && (
+      {showNotification && (
         <InlineNotification
           lowContrast
           actions={
-            rerunNotification.logsURL ? (
+            showNotification.logsURL ? (
               <Link
                 className="bx--inline-notification__text-wrapper"
-                to={rerunNotification.logsURL}
+                to={showNotification.logsURL}
               >
                 {intl.formatMessage({
                   id: 'dashboard.run.rerunStatusMessage',
@@ -294,20 +424,21 @@ export function TaskRunContainer({ intl }) {
               ''
             )
           }
-          title={rerunNotification.message}
-          kind={rerunNotification.kind}
+          title={showNotification.message}
+          kind={showNotification.kind}
           caption=""
         />
       )}
       <RunHeader
         lastTransitionTime={taskRun.status?.startTime}
-        loading={isLoadingTaskRun || isLoadingTask}
         message={taskRunStatusMessage}
         reason={taskRunStatusReason}
         runName={taskRun.metadata.name}
         status={succeeded}
       >
-        {rerun}
+        {runActions.length ? (
+          <Actions items={runActions} kind="button" resource={taskRun} />
+        ) : null}
       </RunHeader>
       <div className="tkn--tasks">
         <TaskTree
@@ -321,7 +452,6 @@ export function TaskRunContainer({ intl }) {
             definition={definition}
             logContainer={logContainer}
             onViewChange={onViewChange}
-            showIO
             stepName={selectedStepId}
             stepStatus={stepStatus}
             taskRun={taskRun}
@@ -341,4 +471,4 @@ export function TaskRunContainer({ intl }) {
   );
 }
 
-export default injectIntl(TaskRunContainer);
+export default TaskRunContainer;

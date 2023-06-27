@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2022 The Tekton Authors
+Copyright 2020-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,36 +13,73 @@ limitations under the License.
 
 const path = require('path');
 
-module.exports = {
-  addons: [
-    '@storybook/addon-essentials',
-    '@storybook/addon-storysource'
-  ],
-  core: {
-    builder: 'webpack5'
+const config = {
+  addons: ['@storybook/addon-essentials', '@storybook/addon-storysource'],
+  core: { disableTelemetry: true },
+  docs: {
+    autodocs: 'tag',
+    defaultName: 'Documentation'
   },
-  reactOptions: {
-    fastRefresh: true,
-    strictMode: false // set in the decorator instead to workaround Storybook issue 12977
+  features: {
+    buildStoriesJson: true,
+    storyStoreV7: true
+  },
+  framework: {
+    name: '@storybook/react-webpack5',
+    options: {
+      fastRefresh: true,
+      strictMode: false,
+      builder: {
+        lazyCompilation: true,
+        fsCache: true
+      }
+    }
   },
   stories: [
-    '../src/**/*.stories.js',
-    '../packages/components/src/**/*.stories.js'
+    { directory: '../src', files: '**/*.stories.js', titlePrefix: 'Containers' },
+    { directory: '../packages/components', files: '**/*.stories.js', titlePrefix: 'Components' },
+    { directory: '../packages/graph', files: '**/*.stories.js', titlePrefix: 'Experimental/Graph' }
   ],
-  webpackFinal: async (config, { configType }) => {
+  webpackFinal: async (config, {
+    configType
+  }) => {
     // `configType` has a value of 'DEVELOPMENT' or 'PRODUCTION'
     // You can change the configuration based on that.
     // 'PRODUCTION' is used when building the static version of storybook.
 
-    config.module.rules.push({
-      test: /\.mjs$/,
-      type: 'javascript/auto'
-    },{
+    config.module.rules.push(
+    // {
+    //   test: /\.mjs$/,
+    //   type: 'javascript/auto'
+    // }, {
+    //   test: /\.js$/,
+    //   exclude: /node_modules/,
+    //   loader: 'babel-loader',
+    //   options: {
+    //     presets: [['@babel/preset-env', {
+    //       modules: 'commonjs'
+    //     }]]
+    //   }
+    // },
+    {
       test: /\.scss$/,
       use: ['style-loader', 'css-loader', 'sass-loader'],
-      include: path.resolve(__dirname, '../'),
+      include: path.resolve(__dirname, '../')
+    }, {
+      test: /\.yaml$/,
+      type: 'json',
+      loader: 'yaml-loader',
+      options: {
+        asJSON: true
+      }
     });
 
+    // config.stats = {
+    //   ...config.stats,
+    //   children: true
+    // }
     return config;
   }
 };
+
+export default config;

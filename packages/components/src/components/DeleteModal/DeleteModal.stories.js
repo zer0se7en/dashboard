@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Tekton Authors
+Copyright 2021-2023 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,7 +11,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-import React from 'react';
 import { action } from '@storybook/addon-actions';
 
 import DeleteModal from './DeleteModal';
@@ -23,15 +22,15 @@ export default {
       default: 'white'
     }
   },
-  title: 'Components/DeleteModal'
+  title: 'DeleteModal'
 };
 
-export const Base = () => (
-  <DeleteModal
-    kind="Pipelines"
-    onClose={action('onClose')}
-    onSubmit={action('onSubmit')}
-    resources={[
+export const Base = {
+  args: {
+    kind: 'Pipelines',
+    onClose: action('onClose'),
+    onSubmit: action('onSubmit'),
+    resources: [
       {
         metadata: {
           name: 'my-pipeline',
@@ -39,7 +38,7 @@ export const Base = () => (
           uid: '700c9915-65f0-4309-b7e0-54d2e4dc8bea'
         }
       }
-    ]}
-    showNamespace={false}
-  />
-);
+    ],
+    showNamespace: false
+  }
+};
